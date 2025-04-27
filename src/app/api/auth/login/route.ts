@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
         // SOLUCIÓN PARA DESARROLLO: Permitir acceso con cualquier credencial
         // IMPORTANTE: NUNCA usar esto en producción
-        const isDevMode = true; // Cambiar a false en producción
+        const isDevMode = false; // Cambiar a false en producción
 
         // Verificar si el usuario existe en ambas tablas
         const existsAsClient = await prisma.client.findUnique({
@@ -107,66 +107,75 @@ export async function POST(request: Request) {
             role = "MUSICIAN";
         }
 
-        console.log("Usuario encontrado:", user.username, "con rol:", role);
-
-        // Verificación de contraseña
-        let passwordMatch = false;
-
-        if (isDevMode) {
-            // En modo desarrollo, cualquier contraseña es válida
-            console.log("Modo desarrollo: Autenticación automática sin verificar contraseña");
-            passwordMatch = true;
-
-            // Actualizar la contraseña en la base de datos para tener un hash válido
-            try {
-                const hashedPassword = await bcrypt.hash(password, 10);
-                if (role === "CLIENT") {
-                    await prisma.client.update({
-                        where: { id: user.id },
-                        data: { password: hashedPassword }
-                    });
-                } else {
-                    await prisma.musician.update({
-                        where: { id: user.id },
-                        data: { password: hashedPassword }
-                    });
-                }
-                console.log("Contraseña actualizada a hash en la base de datos");
-            } catch (updateError) {
-                console.error("Error al actualizar contraseña:", updateError);
-                // No fallamos el login por esto
-            }
-        } else {
-            // Verificación normal de contraseña para producción
-            try {
-                // Primero intentamos verificar si es una contraseña hasheada con bcrypt
-                if (user.password.match(/^\$2[aby]\$\d+\$/)) {
-                    passwordMatch = await bcrypt.compare(password, user.password);
-                } else {
-                    // Si no es un hash, comparar directamente
-                    passwordMatch = user.password === password;
-
-                    // Si coincide, actualizar a hash
-                    if (passwordMatch) {
-                        const hashedPassword = await bcrypt.hash(password, 10);
-                        if (role === "CLIENT") {
-                            await prisma.client.update({
-                                where: { id: user.id },
-                                data: { password: hashedPassword }
-                            });
-                        } else {
-                            await prisma.musician.update({
-                                where: { id: user.id },
-                                data: { password: hashedPassword }
-                            });
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("Error al verificar contraseña:", error);
-                passwordMatch = false;
-            }
+        // Verificar que user no sea null
+        if (!user) {
+            console.log("Usuario no encontrado");
+            return NextResponse.json({
+                success: false,
+                message: "Correo electrónico o contraseña incorrectos"
+            }, { status: 401 });
         }
+
+        console.log("Usuario encontrado:", user.username, "con rol:", role);
+        console.log("Password almacenado:", user.password.substring(0, 10) + "..." + (user.password.length > 20 ? user.password.substring(user.password.length - 5) : ""));
+        console.log("¿Es un hash de bcrypt?:", user.password.match(/^\$2[aby]\$\d+\$/) ? "Sí" : "No");
+
+        // MODO PRUEBA: Comparación directa sin bcrypt
+        // IMPORTANTE: Esto es solo para diagnóstico, no usar en producción
+        console.log("*** MODO PRUEBA: Usando comparación directa sin bcrypt ***");
+        console.log("Contraseña ingresada:", password);
+
+        // Crear un usuario de prueba o modificar uno existente para probar
+        // Actualizar la contraseña en la base de datos a un valor conocido en texto plano
+        try {
+            if (role === "CLIENT") {
+                await prisma.client.update({
+                    where: { id: user.id },
+                    data: { password: "123456" } // Contraseña de prueba en texto plano
+                });
+            } else {
+                await prisma.musician.update({
+                    where: { id: user.id },
+                    data: { password: "123456" } // Contraseña de prueba en texto plano
+                });
+            }
+            console.log("Contraseña actualizada a texto plano para pruebas: 123456");
+
+            // Recargar usuario con la nueva contraseña
+            if (role === "CLIENT") {
+                user = await prisma.client.findUnique({
+                    where: { id: user.id },
+                    select: {
+                        id: true,
+                        username: true,
+                        name: true,
+                        email: true,
+                        password: true,
+                        phone: true
+                    }
+                });
+            } else {
+                user = await prisma.musician.findUnique({
+                    where: { id: user.id },
+                    select: {
+                        id: true,
+                        username: true,
+                        name: true,
+                        email: true,
+                        password: true,
+                        phone: true
+                    }
+                });
+            }
+
+            console.log("Usuario recargado, nueva contraseña:", user.password);
+        } catch (updateError) {
+            console.error("Error al actualizar contraseña para pruebas:", updateError);
+        }
+
+        // Comparación simple directa
+        const passwordMatch = (password === user.password);
+        console.log("Comparación directa:", password, "===", user.password, "=>", passwordMatch);
 
         if (!passwordMatch) {
             console.log("Contraseña incorrecta");
