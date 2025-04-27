@@ -11,7 +11,8 @@ const prisma = new PrismaClient({
 // Esquema de validación para el inicio de sesión
 const loginSchema = z.object({
     email: z.string().email({ message: "Correo electrónico inválido" }),
-    password: z.string().min(1, { message: "La contraseña es requerida" })
+    password: z.string().min(1, { message: "La contraseña es requerida" }),
+    role: z.enum(["CLIENT", "MUSICIAN"]).optional()
 });
 
 export async function POST(request: Request) {
@@ -45,16 +46,17 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        const { email, password } = result.data;
+        const { email, password, role: requestedRole } = result.data;
         console.log("Intentando login para:", email);
         console.log("Contraseña ingresada (longitud):", password.length);
+        console.log("Rol solicitado:", requestedRole || "No especificado");
 
         // SOLUCIÓN PARA DESARROLLO: Permitir acceso con cualquier credencial
         // IMPORTANTE: NUNCA usar esto en producción
         const isDevMode = true; // Cambiar a false en producción
 
-        // Buscar usuario en tabla de clientes
-        let user = await prisma.client.findUnique({
+        // Verificar si el usuario existe en ambas tablas
+        const existsAsClient = await prisma.client.findUnique({
             where: { email },
             select: {
                 id: true,
@@ -66,38 +68,46 @@ export async function POST(request: Request) {
             }
         });
 
-        let role = "CLIENT";
-
-        // Si no existe en clientes, buscar en músicos
-        if (!user) {
-            console.log("Usuario no encontrado como cliente, buscando como músico");
-            user = await prisma.musician.findUnique({
-                where: { email },
-                select: {
-                    id: true,
-                    username: true,
-                    name: true,
-                    email: true,
-                    password: true,
-                    phone: true
-                }
-            });
-
-            if (user) {
-                role = "MUSICIAN";
+        const existsAsMusician = await prisma.musician.findUnique({
+            where: { email },
+            select: {
+                id: true,
+                username: true,
+                name: true,
+                email: true,
+                password: true,
+                phone: true
             }
-        }
+        });
 
-        // Verificar si el usuario existe
-        if (!user) {
-            console.log("Usuario no encontrado");
+        // Si no existe en ninguna de las tablas
+        if (!existsAsClient && !existsAsMusician) {
+            console.log("Usuario no encontrado en ninguna tabla");
             return NextResponse.json({
                 success: false,
                 message: "Correo electrónico o contraseña incorrectos"
             }, { status: 401 });
         }
 
-        console.log("Usuario encontrado:", user.username);
+        // Determinar qué usuario usar según el rol solicitado o la disponibilidad
+        let user;
+        let role;
+
+        if (requestedRole === "CLIENT" && existsAsClient) {
+            user = existsAsClient;
+            role = "CLIENT";
+        } else if (requestedRole === "MUSICIAN" && existsAsMusician) {
+            user = existsAsMusician;
+            role = "MUSICIAN";
+        } else if (existsAsClient) {
+            user = existsAsClient;
+            role = "CLIENT";
+        } else {
+            user = existsAsMusician;
+            role = "MUSICIAN";
+        }
+
+        console.log("Usuario encontrado:", user.username, "con rol:", role);
 
         // Verificación de contraseña
         let passwordMatch = false;
@@ -168,21 +178,12 @@ export async function POST(request: Request) {
 
         console.log("Contraseña correcta");
 
-        // Comprobar si es su primer inicio de sesión
-        const existsAsClient = await prisma.client.findUnique({
-            where: { email },
-            select: { id: true }
-        });
-
-        const existsAsMusician = await prisma.musician.findUnique({
-            where: { email },
-            select: { id: true }
-        });
-
-        // Si solo existe en una de las tablas, es su primer inicio de sesión
-        const firstLogin = !(existsAsClient && existsAsMusician);
+        // Comprobar si es su primer inicio de sesión o si existe en ambas tablas
+        const existsInBothTables = existsAsClient && existsAsMusician;
+        const firstLogin = !existsInBothTables;
 
         console.log("¿Es primer inicio de sesión?:", firstLogin);
+        console.log("¿Existe en ambas tablas?:", existsInBothTables);
 
         // Eliminar el password del objeto de usuario para la respuesta
         const userWithoutPassword = {
@@ -200,7 +201,7 @@ export async function POST(request: Request) {
             role
         });
 
-        console.log("Login exitoso para usuario:", userWithoutPassword.username);
+        console.log("Login exitoso para usuario:", userWithoutPassword.username, "con rol:", role);
         console.log("JWT generado correctamente");
         console.log("========= FIN DEL PROCESO DE LOGIN =========");
 
@@ -213,7 +214,8 @@ export async function POST(request: Request) {
                 role
             },
             token,
-            firstLogin
+            firstLogin,
+            existsInBothTables
         }, { status: 200 });
 
     } catch (error) {

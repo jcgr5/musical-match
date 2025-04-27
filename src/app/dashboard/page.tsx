@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { MusicianCard, type Musician } from "@/components/musician-card";
 import { Footer } from "@/components/footer";
+import { useRouter } from "next/navigation";
 
 // Datos simulados de músicos
 const featuredMusicians: Musician[] = [
@@ -100,11 +101,41 @@ const instruments = [
 ];
 
 export default function Dashboard() {
+    const router = useRouter();
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
     const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
     const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]);
     const [isFiltersVisible, setIsFiltersVisible] = useState(false);
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        // Comprobar el rol del usuario
+        const storedRole = localStorage.getItem("userRole");
+
+        if (storedRole) {
+            setUserRole(storedRole);
+
+            // Si es músico, redirigir a su perfil
+            if (storedRole === "MUSICIAN") {
+                router.push('/profile');
+            }
+        }
+
+        setLoading(false);
+    }, [router]);
+
+    // Si está cargando o es músico, mostrar spinner o nada
+    if (loading) {
+        return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
+    }
+
+    // Si no hay rol, redirigir a login
+    if (!userRole) {
+        router.push('/sign-in');
+        return null;
+    }
 
     // Función para filtrar músicos
     const filteredMusicians = featuredMusicians.filter(musician => {
@@ -148,9 +179,8 @@ export default function Dashboard() {
         );
     };
 
-    return (
+    return userRole === "CLIENT" ? (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-
             <main className="container mx-auto px-4 py-6">
                 {/* Banner principal */}
                 <div className="relative w-full h-60 sm:h-72 md:h-80 rounded-xl overflow-hidden mb-6 sm:mb-8">
@@ -384,5 +414,5 @@ export default function Dashboard() {
             {/* Footer */}
             <Footer />
         </div>
-    );
+    ) : null;
 } 

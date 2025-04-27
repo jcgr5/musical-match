@@ -1,29 +1,48 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, MapPin, DollarSign, Calendar, Star, Music, User, Mail, Phone } from "lucide-react";
+import { ChevronLeft, ChevronRight, MapPin, DollarSign, Calendar, Star, Music, Heart } from "lucide-react";
 import Image from "next/image";
+import { ReservationForm, type ReservationData } from "@/components/reservation-form";
+import { Chat } from "@/components/chat";
 
-// Interfaz para tipos de usuarios
-interface UserData {
-    id?: string;
-    username?: string;
-    name?: string;
-    email?: string;
-    phone?: string;
-    imageUrl?: string;
+// Tipos para el músico
+interface Musician {
+    id: string;
+    name: string;
+    description: string;
+    genres: string[];
+    location: string;
+    priceRange: string;
+    image: string;
+    rating: number;
+    totalReviews: number;
+    availability: string;
+    repertoire: string[];
+    reviews: {
+        name: string;
+        date: string;
+        rating: number;
+        comment: string;
+    }[];
 }
 
-export default function ProfilePage() {
+export default function MusicianProfilePage() {
+    const router = useRouter();
+    const params = useParams();
+    const musicianId = params.id as string;
+
     const [currentImage, setCurrentImage] = useState(0);
     const [userRole, setUserRole] = useState<string | null>(null);
-    const [userData, setUserData] = useState<UserData | null>(null);
+    const [userData, setUserData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const router = useRouter();
+    const [isReservationDialogOpen, setIsReservationDialogOpen] = useState(false);
+    const [reservation, setReservation] = useState<ReservationData | null>(null);
+    const [isFavorite, setIsFavorite] = useState(false);
 
     const images = [
         "/images/gallery-1.jpg",
@@ -48,8 +67,11 @@ export default function ProfilePage() {
             }
         }
 
+        // En un escenario real, aquí obtendríamos los datos del músico con el ID
+        // desde la API con algo como: fetchMusicianData(musicianId)
+
         setLoading(false);
-    }, []);
+    }, [musicianId]);
 
     const nextImage = () => {
         setCurrentImage((prev) => (prev === images.length - 1 ? 0 : prev + 1));
@@ -67,8 +89,9 @@ export default function ProfilePage() {
         { src: "/images/party.jpg", title: "Fiestas Privadas" },
     ];
 
-    // En un caso real, estos datos vendrían de una API o base de datos
-    const artist = {
+    // En un escenario real, estos datos vendrían de una API o base de datos
+    const musician: Musician = {
+        id: musicianId,
         name: "Carlos Vives",
         description: "Músico profesional con más de 10 años de experiencia en eventos sociales y corporativos. Especializado en música latinoamericana, pop y boleros.",
         genres: ["Matrimonio", "Boleros", "Fusión", "Pop"],
@@ -101,102 +124,36 @@ export default function ProfilePage() {
         ]
     };
 
+    const handleReservationSubmit = (data: ReservationData) => {
+        console.log("Reserva enviada:", data);
+        setReservation(data);
+        // En un escenario real, aquí enviaríamos los datos a la API
+        // saveReservation(data)
+    };
+
+    const toggleFavorite = () => {
+        setIsFavorite(!isFavorite);
+        // En un escenario real, aquí actualizaríamos la lista de favoritos en la API
+        // updateFavorites(musicianId, !isFavorite)
+    };
+
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
     }
 
-    // Renderizar perfil de cliente si el rol es CLIENT
-    if (userRole === "CLIENT") {
+    // Si el usuario no está autenticado, mostrar mensaje
+    if (!userRole) {
         return (
-            <div className="min-h-screen bg-white text-black">
-                <div className="max-w-6xl mx-auto p-6">
-                    <div className="flex flex-col lg:flex-row gap-8 mt-12">
-                        {/* Imagen de perfil y detalles del cliente */}
-                        <div className="w-full lg:w-1/3">
-                            <div className="bg-white rounded-lg overflow-hidden shadow-md border border-gray-200">
-                                <div className="relative aspect-square bg-gray-100 flex items-center justify-center">
-                                    {userData?.imageUrl ? (
-                                        <Image
-                                            src={userData.imageUrl}
-                                            alt={userData?.name || "Usuario"}
-                                            fill
-                                            className="object-cover"
-                                        />
-                                    ) : (
-                                        <User size={80} className="text-gray-400" />
-                                    )}
-                                </div>
-                            </div>
-
-                            <h1 className="text-3xl font-bold mt-4">{userData?.name || "Usuario"}</h1>
-
-                            <div className="mt-6 space-y-4">
-                                <div className="flex items-center text-gray-700">
-                                    <User size={18} className="mr-2" />
-                                    <span>{userData?.username || "username"}</span>
-                                </div>
-                                <div className="flex items-center text-gray-700">
-                                    <Mail size={18} className="mr-2" />
-                                    <span>{userData?.email || "email@example.com"}</span>
-                                </div>
-                                <div className="flex items-center text-gray-700">
-                                    <Phone size={18} className="mr-2" />
-                                    <span>{userData?.phone || "Teléfono no disponible"}</span>
-                                </div>
-                            </div>
-
-                            <Button
-                                className="w-full mt-6 bg-black hover:bg-gray-800 text-white"
-                                onClick={() => router.push('/dashboard')}
-                            >
-                                Buscar músicos
-                            </Button>
-                        </div>
-
-                        {/* Contenido principal - tabs para cliente */}
-                        <div className="w-full lg:w-2/3">
-                            <Tabs defaultValue="reservations" className="w-full">
-                                <TabsList className="bg-white border border-gray-200">
-                                    <TabsTrigger value="reservations">Mis Reservas</TabsTrigger>
-                                    <TabsTrigger value="favorites">Mis Favoritos</TabsTrigger>
-                                    <TabsTrigger value="reviews">Mis Opiniones</TabsTrigger>
-                                </TabsList>
-
-                                <TabsContent value="reservations" className="mt-4">
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                        <h2 className="text-xl font-semibold mb-3">Mis Reservas</h2>
-                                        <div className="text-gray-500 italic">
-                                            No tienes reservas activas. ¡Encuentra un músico para tu próximo evento!
-                                        </div>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="favorites" className="mt-4">
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                        <h2 className="text-xl font-semibold mb-3">Mis Músicos Favoritos</h2>
-                                        <div className="text-gray-500 italic">
-                                            No tienes músicos favoritos. Marca como favorito a los músicos que te interesen.
-                                        </div>
-                                    </div>
-                                </TabsContent>
-
-                                <TabsContent value="reviews" className="mt-4">
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                        <h2 className="text-xl font-semibold mb-3">Mis Opiniones</h2>
-                                        <div className="text-gray-500 italic">
-                                            No has dejado opiniones. Comparte tu experiencia después de una reserva.
-                                        </div>
-                                    </div>
-                                </TabsContent>
-                            </Tabs>
-                        </div>
-                    </div>
-                </div>
+            <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+                <h1 className="text-2xl font-bold mb-4">Iniciar sesión requerido</h1>
+                <p className="text-gray-600 mb-6">Debes iniciar sesión para ver el perfil de este músico.</p>
+                <Button onClick={() => router.push('/sign-in')}>
+                    Iniciar Sesión
+                </Button>
             </div>
         );
     }
 
-    // Renderizar perfil de músico (caso por defecto)
     return (
         <div className="min-h-screen bg-white text-black">
             <div className="max-w-6xl mx-auto p-6">
@@ -206,24 +163,38 @@ export default function ProfilePage() {
                         <div className="bg-white rounded-lg overflow-hidden shadow-md border border-gray-200">
                             <div className="relative aspect-square">
                                 <Image
-                                    src={artist.image}
-                                    alt={artist.name}
+                                    src={musician.image}
+                                    alt={musician.name}
                                     fill
                                     className="object-cover"
                                 />
                             </div>
                         </div>
 
-                        <h1 className="text-3xl font-bold mt-4">{artist.name}</h1>
+                        <div className="flex justify-between items-center mt-4">
+                            <h1 className="text-3xl font-bold">{musician.name}</h1>
+                            {userRole === "CLIENT" && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={toggleFavorite}
+                                    className="hover:bg-transparent"
+                                >
+                                    <Heart
+                                        className={`h-6 w-6 ${isFavorite ? "fill-red-500 text-red-500" : "text-gray-400"}`}
+                                    />
+                                </Button>
+                            )}
+                        </div>
 
                         <div className="flex items-center mt-2">
                             <Star className="h-5 w-5 text-yellow-400" />
-                            <span className="ml-1 font-medium">{artist.rating}</span>
-                            <span className="ml-1 text-gray-500">({artist.totalReviews} reseñas)</span>
+                            <span className="ml-1 font-medium">{musician.rating}</span>
+                            <span className="ml-1 text-gray-500">({musician.totalReviews} reseñas)</span>
                         </div>
 
                         <div className="flex flex-wrap gap-2 mt-4">
-                            {artist.genres.map((genre) => (
+                            {musician.genres.map((genre) => (
                                 <Badge key={genre} variant="outline" className="bg-gray-100 hover:bg-gray-200 text-black">
                                     {genre}
                                 </Badge>
@@ -232,22 +203,27 @@ export default function ProfilePage() {
 
                         <div className="flex items-center mt-4 text-gray-700">
                             <MapPin size={18} className="mr-2" />
-                            <span>{artist.location}</span>
+                            <span>{musician.location}</span>
                         </div>
 
                         <div className="flex items-center mt-2 text-gray-700">
                             <DollarSign size={18} className="mr-2" />
-                            <span>{artist.priceRange}</span>
+                            <span>{musician.priceRange}</span>
                         </div>
 
                         <div className="flex items-center mt-2 text-gray-700">
                             <Calendar size={18} className="mr-2" />
-                            <span>{artist.availability}</span>
+                            <span>{musician.availability}</span>
                         </div>
 
-                        <Button className="w-full mt-6 bg-black hover:bg-gray-800 text-white">
-                            Reservar artista
-                        </Button>
+                        {userRole === "CLIENT" && (
+                            <Button
+                                className="w-full mt-6 bg-black hover:bg-gray-800 text-white"
+                                onClick={() => setIsReservationDialogOpen(true)}
+                            >
+                                Reservar artista
+                            </Button>
+                        )}
                     </div>
 
                     {/* Contenido principal - tabs */}
@@ -258,12 +234,13 @@ export default function ProfilePage() {
                                 <TabsTrigger value="repertoire">Repertorio</TabsTrigger>
                                 <TabsTrigger value="reviews">Opiniones</TabsTrigger>
                                 <TabsTrigger value="gallery">Galería</TabsTrigger>
+                                {reservation && <TabsTrigger value="chat">Chat</TabsTrigger>}
                             </TabsList>
 
                             <TabsContent value="description" className="mt-4">
                                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                                     <h2 className="text-xl font-semibold mb-3">Acerca de mí</h2>
-                                    <p className="text-gray-700">{artist.description}</p>
+                                    <p className="text-gray-700">{musician.description}</p>
                                 </div>
 
                                 {/* Sección de eventos disponibles */}
@@ -291,7 +268,7 @@ export default function ProfilePage() {
                                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                                     <h2 className="text-xl font-semibold mb-3">Mi repertorio</h2>
                                     <ul className="space-y-2">
-                                        {artist.repertoire.map((song, index) => (
+                                        {musician.repertoire.map((song, index) => (
                                             <li key={index} className="flex items-center">
                                                 <Music size={16} className="mr-2 text-gray-500" />
                                                 <span className="text-gray-700">{song}</span>
@@ -305,7 +282,7 @@ export default function ProfilePage() {
                                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                                     <h2 className="text-xl font-semibold mb-3">Opiniones de clientes</h2>
                                     <div className="space-y-4">
-                                        {artist.reviews.map((review, index) => (
+                                        {musician.reviews.map((review, index) => (
                                             <div key={index} className="border-b border-gray-200 pb-4 last:border-0">
                                                 <div className="flex justify-between items-center">
                                                     <h3 className="font-medium">{review.name}</h3>
@@ -374,10 +351,35 @@ export default function ProfilePage() {
                                     </div>
                                 </div>
                             </TabsContent>
+
+                            {reservation && (
+                                <TabsContent value="chat" className="mt-4">
+                                    {userData && (
+                                        <Chat
+                                            clientId={userData.id || "client-1"}
+                                            musicianId={musician.id}
+                                            clientName={userData.name || "Cliente"}
+                                            musicianName={musician.name}
+                                            reservationData={reservation}
+                                        />
+                                    )}
+                                </TabsContent>
+                            )}
                         </Tabs>
                     </div>
                 </div>
             </div>
+
+            {/* Formulario de reserva (diálogo) */}
+            {userRole === "CLIENT" && (
+                <ReservationForm
+                    isOpen={isReservationDialogOpen}
+                    onClose={() => setIsReservationDialogOpen(false)}
+                    onSubmit={handleReservationSubmit}
+                    musicianId={musician.id}
+                    initialPrice={300000}
+                />
+            )}
         </div>
     );
 } 

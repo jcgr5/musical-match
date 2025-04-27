@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 // Tipo para los músicos
 export type Musician = {
@@ -22,9 +22,16 @@ interface MusicianCardProps {
 }
 
 export function MusicianCard({ musician, showDiscount = true }: MusicianCardProps) {
+    const router = useRouter();
+
+    const handleViewProfile = () => {
+        router.push(`/musicians/${musician.id}`);
+    };
+
     return (
         <div
-            className="bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col h-[400px] sm:h-[450px]"
+            className="bg-white dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col h-[400px] sm:h-[450px] cursor-pointer"
+            onClick={handleViewProfile}
         >
             {/* Imagen con altura fija */}
             <div className="relative h-40 sm:h-48">
@@ -90,12 +97,23 @@ export function MusicianCard({ musician, showDiscount = true }: MusicianCardProp
 
                 {/* Botones siempre al final de la tarjeta */}
                 <div className="flex space-x-2 mt-auto">
-                    <Button className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm py-1 sm:py-2">
-                        <Link href={`/musicians/${musician.id}`} className="w-full h-full flex items-center justify-center">
-                            Reservar
-                        </Link>
+                    <Button
+                        className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm py-1 sm:py-2"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/musicians/${musician.id}`);
+                        }}
+                    >
+                        Reservar
                     </Button>
-                    <Button variant="outline" className="px-2 sm:px-3 border-primary hover:bg-primary/10 text-primary">
+                    <Button
+                        variant="outline"
+                        className="px-2 sm:px-3 border-primary hover:bg-primary/10 text-primary"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            // Aquí iría la lógica para añadir a favoritos
+                        }}
+                    >
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 sm:w-5 sm:h-5">
                             <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
                         </svg>
