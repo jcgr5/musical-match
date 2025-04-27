@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Instrument {
+  id                 String                @id @default(cuid())
+  name               String                @db.VarChar(30)
+  musicianInstruments MusicianInstrument[]
+}
+
+model MusicalGenre {
+  id              String          @id @default(cuid())
+  name            String          @db.VarChar(30)
+  musicianGenres  MusicianGenre[]
+}
+
+model Client {
+  id            String        @id @default(cuid())
+  username      String        @unique @db.VarChar(30)
+  password      String        @db.VarChar(20)
+  name          String        @db.VarChar(50)
+  email         String        @unique @db.VarChar(50)
+  phone         String        @db.VarChar(20)
+  reservations  Reservation[]
+  reviews       Review[]
+  messages Message[]
+  completeReservation CompletedReservation[]
+}
+
+model Musician {
+  id                  String               @id @default(cuid())
+  username            String               @unique @db.VarChar(30)
+  password            String               @db.VarChar(20)
+  name                String               @db.VarChar(50)
+  email               String               @unique @db.VarChar(50)
+  phone               String               @db.VarChar(20)
+  reservations        Reservation[]
+  reviews             Review[]
+  media               Media[]
+  musicianGenres      MusicianGenre[]
+  musicianInstruments MusicianInstrument[]
+  messages Message[]
+  completeReservation CompletedReservation[]
+}
+
+model ReservationStatus {
+  id           String        @id @default(cuid())
+  name         String        @db.VarChar(20)
+  reservations Reservation[]
+}
+
+model RequestStatus {
+  id   String @id @default(cuid())
+  name String @db.VarChar(20)
+}
+
+model Message {
+  id  String  @id @default(cuid())
+  clientId String 
+  musicianId String
+  content String @db.Text
+  timestamp DateTime @default(now())
+  reservationId String
+  client Client @relation(fields:[clientId],references: [id])
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  musician Musician @relation(fields: [musicianId], references: [id])
+}
+
+model PaymentMethod {
+  id String @id @default(cuid())
+  name String @db.VarChar(30)
+  completedReservation CompletedReservation[]
+}
+
+model Reservation {
+  id                 String            @id @default(cuid())
+  clientId           String
+  client             Client            @relation(fields: [clientId], references: [id])
+  musicianId         String
+  musician           Musician          @relation(fields: [musicianId], references: [id])
+  price              Decimal           @db.Decimal(10, 2)
+  creationDate       DateTime @default(now())
+  serviceDate        DateTime
+  reservationStatusId String
+  reservationStatus   ReservationStatus @relation(fields: [reservationStatusId], references: [id])
+  messages Message[]
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id])
+  musicianId  String
+  musician    Musician @relation(fields: [musicianId], references: [id])
+  calificacion Int
+  description String?  @db.Text
+  reviewDate  DateTime @default(now())
+}
+
+model Media {
+  id         String   @id @default(cuid())
+  musicianId String
+  musician   Musician @relation(fields: [musicianId], references: [id])
+  mediaType  String   @db.VarChar(10)
+  filePath   String   @db.VarChar(255)
+  uploadDate DateTime @default(now())
+}
+
+model CompletedReservation {
+ id String @id @default(cuid())
+ clientId String
+ musicianId String
+ reservationDate DateTime @default(now())
+ paymentMethodId String
+ client Client @relation(fields: [clientId],references: [id])
+ musician Musician @relation(fields: [musicianId],references: [id])
+ paymentMethod PaymentMethod @relation(fields: [paymentMethodId],references: [id])
+}
+
+model MusicianGenre {
+  id            String      @id @default(cuid())
+  musicianId    String
+  musician      Musician    @relation(fields: [musicianId], references: [id])
+  musicalGenreId String
+  musicalGenre   MusicalGenre @relation(fields: [musicalGenreId], references: [id])
+
+  @@unique([musicianId, musicalGenreId])
+}
+
+model MusicianInstrument {
+  id           String     @id @default(cuid())
+  musicianId   String
+  musician     Musician   @relation(fields: [musicianId], references: [id])
+  instrumentId String
+  instrument   Instrument @relation(fields: [instrumentId], references: [id])
+
+  @@unique([musicianId, instrumentId])
+}
