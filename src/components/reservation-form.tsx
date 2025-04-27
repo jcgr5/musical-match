@@ -26,11 +26,10 @@ interface ReservationFormProps {
     isOpen: boolean;
     onClose: () => void;
     onSubmit: (data: ReservationData) => void;
-    musicianId: string;
     initialPrice?: number;
 }
 
-export function ReservationForm({ isOpen, onClose, onSubmit, musicianId, initialPrice = 300000 }: ReservationFormProps) {
+export function ReservationForm({ isOpen, onClose, onSubmit, initialPrice = 300000 }: ReservationFormProps) {
     const [reservationData, setReservationData] = useState<ReservationData>({
         eventType: "Matrimonio",
         eventDate: format(new Date(), "yyyy-MM-dd"),

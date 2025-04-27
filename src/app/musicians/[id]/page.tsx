@@ -386,7 +386,6 @@ export default function MusicianProfilePage() {
                     isOpen={isReservationDialogOpen}
                     onClose={() => setIsReservationDialogOpen(false)}
                     onSubmit={handleReservationSubmit}
-                    musicianId={musician.id}
                     initialPrice={300000}
                 />
             )}

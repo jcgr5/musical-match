@@ -25,7 +25,6 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import RoleSelectionModal from "@/components/RoleSelectionModal"
 
@@ -43,14 +42,14 @@ const formSchema = z.object({
 export function SignInForm({
     className,
     ...props
-}: React.ComponentPropsWithoutRef<"form">) {
+}: React.HTMLAttributes<HTMLDivElement>) {
     const router = useRouter()
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState<boolean>(false)
     const [showRoleSelector, setShowRoleSelector] = useState<boolean>(false)
-    const [userData, setUserData] = useState<any>(null)
+    const [userData, setUserData] = useState<Record<string, unknown>>({})
     const [showRoleModal, setShowRoleModal] = useState(false)
-    const [userId, setUserId] = useState("")
+    const userId = ""
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -112,10 +111,6 @@ export function SignInForm({
         } finally {
             setLoading(false)
         }
-    }
-
-    function handleRoleSelect(role: string) {
-        form.setValue("role", role as "CLIENT" | "MUSICIAN")
     }
 
     const handleRoleSelection = (role: string) => {

@@ -18,14 +18,6 @@ interface Message {
     senderType: "client" | "musician";
 }
 
-interface UserData {
-    id?: string;
-    username?: string;
-    name?: string;
-    email?: string;
-    phone?: string;
-}
-
 interface ChatProps {
     clientId: string;
     musicianId: string;
@@ -38,7 +30,6 @@ export function Chat({ clientId, musicianId, clientName, musicianName, reservati
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const [userRole, setUserRole] = useState<"CLIENT" | "MUSICIAN" | null>(null);
-    const [userData, setUserData] = useState<UserData | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -52,7 +43,8 @@ export function Chat({ clientId, musicianId, clientName, musicianName, reservati
 
         if (storedUser) {
             try {
-                setUserData(JSON.parse(storedUser));
+                // Parseamos para verificar que es JSON válido, pero no lo usamos
+                JSON.parse(storedUser);
             } catch (error) {
                 console.error("Error parsing user data", error);
             }
