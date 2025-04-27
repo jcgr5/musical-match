@@ -7,13 +7,22 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
 
 const signUpSchema = z.object({
     name: z.string().min(2, {
         message: "El nombre debe tener al menos 2 caracteres",
     }),
+    username: z.string().min(3, {
+        message: "El nombre de usuario debe tener al menos 3 caracteres",
+    }),
     email: z.string().email({
         message: "Por favor ingresa un correo electrónico válido",
+    }),
+    phone: z.string().min(7, {
+        message: "Por favor ingresa un número de teléfono válido",
     }),
     password: z.string().min(6, {
         message: "La contraseña debe tener al menos 6 caracteres",
@@ -31,12 +40,15 @@ export function SignUpForm({
     ...props
 }: React.ComponentPropsWithoutRef<"form">) {
     const [isLoading, setIsLoading] = useState(false)
+    const router = useRouter()
 
     const form = useForm<SignUpFormValues>({
         resolver: zodResolver(signUpSchema),
         defaultValues: {
             name: "",
+            username: "",
             email: "",
+            phone: "",
             password: "",
             confirmPassword: "",
         },
@@ -46,12 +58,49 @@ export function SignUpForm({
         setIsLoading(true)
 
         try {
-            // Aquí iría la lógica para enviar los datos al servidor
-            console.log(data)
-            // Simular retraso de procesamiento
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            // Añadir role=CLIENT por defecto a los datos enviados
+            const formData = {
+                ...data,
+                role: "CLIENT" // Role por defecto
+            };
+
+            const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData),
+            })
+
+            // Comprobar si la respuesta es JSON antes de parsearla
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error(`Error del servidor: respuesta no válida (${response.status})`);
+            }
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || "Error al registrar usuario");
+            }
+
+            toast({
+                title: "Registro exitoso",
+                description: "Tu cuenta ha sido creada correctamente",
+            })
+
+            // Redireccionar al usuario después de un registro exitoso
+            setTimeout(() => {
+                router.push('/sign-in')
+            }, 2000)
         } catch (error) {
             console.error("Error al registrar usuario:", error)
+
+            toast({
+                variant: "destructive",
+                title: "Error en el registro",
+                description: error instanceof Error ? error.message : "Ocurrió un error durante el registro",
+            })
         } finally {
             setIsLoading(false)
         }
@@ -83,6 +132,21 @@ export function SignUpForm({
                         <p className="text-sm text-red-500">{form.formState.errors.name.message}</p>
                     )}
                 </div>
+
+                <div className="grid gap-2">
+                    <Label htmlFor="username">Nombre de usuario</Label>
+                    <Input
+                        id="username"
+                        type="text"
+                        placeholder="Ingrese un nombre de usuario"
+                        {...form.register("username")}
+                        disabled={isLoading}
+                    />
+                    {form.formState.errors.username && (
+                        <p className="text-sm text-red-500">{form.formState.errors.username.message}</p>
+                    )}
+                </div>
+
                 <div className="grid gap-2">
                     <Label htmlFor="email">Correo electrónico</Label>
                     <Input
@@ -96,6 +160,21 @@ export function SignUpForm({
                         <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
                     )}
                 </div>
+
+                <div className="grid gap-2">
+                    <Label htmlFor="phone">Teléfono</Label>
+                    <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="Ingrese su número de teléfono"
+                        {...form.register("phone")}
+                        disabled={isLoading}
+                    />
+                    {form.formState.errors.phone && (
+                        <p className="text-sm text-destructive">{form.formState.errors.phone.message}</p>
+                    )}
+                </div>
+
                 <div className="grid gap-2">
                     <Label htmlFor="password">Contraseña</Label>
                     <Input
@@ -108,6 +187,7 @@ export function SignUpForm({
                         <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
                     )}
                 </div>
+
                 <div className="grid gap-2">
                     <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
                     <Input
@@ -120,6 +200,7 @@ export function SignUpForm({
                         <p className="text-sm text-destructive">{form.formState.errors.confirmPassword.message}</p>
                     )}
                 </div>
+
                 <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90" disabled={isLoading}>
                     {isLoading ? "Registrando..." : "Registrarse"}
                 </Button>
@@ -150,20 +231,24 @@ export function SignUpForm({
                     <Button variant="outline" className="w-full" disabled={isLoading}>
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                             <path
-                                d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"
+                                d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
                                 fill="currentColor"
                             />
                         </svg>
-                        <span className="sr-only">Registrarse con Meta</span>
+                        <span className="sr-only">Registrarse con Facebook</span>
                     </Button>
                 </div>
+                <div className="text-center text-sm text-muted-foreground">
+                    ¿Ya tienes una cuenta?{" "}
+                    <Link
+                        href="/sign-in"
+                        className="font-medium text-primary underline underline-offset-4 hover:text-primary/90"
+                    >
+                        Inicia sesión
+                    </Link>
+                </div>
             </div>
-            <div className="text-center text-sm">
-                ¿Ya tienes una cuenta?{" "}
-                <Link href="/sign-in" className="underline underline-offset-4 text-primary hover:text-primary/80">
-                    Inicia sesión
-                </Link>
-            </div>
+            <Toaster />
         </form>
     )
 } 

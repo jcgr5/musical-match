@@ -20,7 +20,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${inter.className} antialiased min-h-screen flex flex-col`}>
+      <body
+        className={`${inter.className} antialiased min-h-screen flex flex-col`}
+        suppressHydrationWarning
+      >
         <ClientOnlyLayout>
           {children}
         </ClientOnlyLayout>
