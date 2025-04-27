@@ -23,6 +23,14 @@ export default function ProfilePage() {
         setCurrentImage((prev) => (prev === 0 ? images.length - 1 : prev - 1));
     };
 
+    // Imágenes de eventos disponibles
+    const eventImages = [
+        { src: "/images/wedding.jpg", title: "Bodas" },
+        { src: "/images/corporate.jpg", title: "Eventos Corporativos" },
+        { src: "/images/graduation.jpg", title: "Graduaciones" },
+        { src: "/images/party.jpg", title: "Fiestas Privadas" },
+    ];
+
     // En un caso real, estos datos vendrían de una API o base de datos
     const artist = {
         name: "Carlos Vives",
@@ -106,7 +114,7 @@ export default function ProfilePage() {
                         </div>
 
                         <Button className="w-full mt-6 bg-black hover:bg-gray-800 text-white">
-                            Editar perfil
+                            Reservar artista
                         </Button>
                     </div>
 
@@ -124,6 +132,26 @@ export default function ProfilePage() {
                                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
                                     <h2 className="text-xl font-semibold mb-3">Acerca de mí</h2>
                                     <p className="text-gray-700">{artist.description}</p>
+                                </div>
+
+                                {/* Sección de eventos disponibles */}
+                                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mt-6">
+                                    <h2 className="text-xl font-semibold mb-4">Disponible para eventos</h2>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {eventImages.map((event, index) => (
+                                            <div key={index} className="flex flex-col items-center">
+                                                <div className="relative w-full h-32 rounded-lg overflow-hidden mb-2">
+                                                    <Image
+                                                        src={event.src}
+                                                        alt={event.title}
+                                                        fill
+                                                        className="object-cover"
+                                                    />
+                                                </div>
+                                                <span className="text-sm font-medium">{event.title}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </TabsContent>
 

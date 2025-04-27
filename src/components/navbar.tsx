@@ -41,6 +41,17 @@ export function Navbar({ searchTerm = "", onSearchChange }: NavbarProps) {
         setIsDropdownOpen(false);
     };
 
+    // Función para determinar la URL de edición de perfil según el rol
+    const getEditProfileUrl = () => {
+        if (userRole === "MUSICIAN") {
+            return "/profile/edit/musician";
+        } else if (userRole === "CLIENT") {
+            return "/profile/edit/client";
+        } else {
+            return "/profile/edit";
+        }
+    };
+
     return (
         <header className="sticky top-0 z-50 w-full bg-white dark:bg-slate-800 shadow-sm">
             <div className="container mx-auto px-4">
@@ -180,13 +191,11 @@ export function Navbar({ searchTerm = "", onSearchChange }: NavbarProps) {
                                                 Ver Perfil
                                             </Link>
                                         </DropdownMenuItem>
-                                        {userRole === "MUSICIAN" && (
-                                            <DropdownMenuItem onClick={handleMenuItemClick}>
-                                                <Link href="/profile/musician" className="w-full">
-                                                    Editar Perfil Artístico
-                                                </Link>
-                                            </DropdownMenuItem>
-                                        )}
+                                        <DropdownMenuItem onClick={handleMenuItemClick}>
+                                            <Link href={getEditProfileUrl()} className="w-full">
+                                                Editar Perfil
+                                            </Link>
+                                        </DropdownMenuItem>
                                         <DropdownMenuItem onClick={handleMenuItemClick}>
                                             <Link href="/dashboard" className="w-full">
                                                 Dashboard
