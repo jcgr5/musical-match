@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import bcrypt from 'bcrypt';
+import { hashPassword } from '@/utils/bcrypt';
 
 // Instanciar PrismaClient con debug para ver las consultas SQL
 const prisma = new PrismaClient({
@@ -114,8 +114,9 @@ export async function POST(request: Request) {
                 }, { status: 409 });
             }
 
-            // Hashear la contraseña con bcrypt (10 rondas de salting)
-            const hashedPassword = await bcrypt.hash(password, 10);
+            // Hashear la contraseña con nuestra función de utilidad
+            console.log("Hasheando contraseña para:", username);
+            const hashedPassword = await hashPassword(password);
             console.log("Contraseña hasheada correctamente");
 
             // Crear usuario según el rol seleccionado

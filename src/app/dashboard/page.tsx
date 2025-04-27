@@ -7,60 +7,7 @@ import { MusicianCard, type Musician } from "@/components/musician-card";
 import { Footer } from "@/components/footer";
 import { useRouter } from "next/navigation";
 
-// Datos simulados de músicos
-const featuredMusicians: Musician[] = [
-    {
-        id: "1",
-        name: "Carlos Vives",
-        image: "https://images.unsplash.com/photo-1549213783-8284d0336c4f?q=80&w=1470&auto=format&fit=crop",
-        rating: 4.8,
-        price: "$300.000 - $500.000",
-        location: "Bogotá",
-        genre: ["Pop", "Vallenato"],
-        instrument: "Vocalista",
-        availability: ["Fines de semana", "Eventos privados"],
-        isPromoted: true,
-        discount: "15% de descuento para eventos en Diciembre"
-    },
-    {
-        id: "2",
-        name: "María Fernández",
-        image: "https://images.unsplash.com/photo-1516116216624-53e697fedbea?q=80&w=1528&auto=format&fit=crop",
-        rating: 4.5,
-        price: "$250.000 - $400.000",
-        location: "Medellín",
-        genre: ["Jazz", "Blues"],
-        instrument: "Saxofón",
-        availability: ["Lunes a Viernes", "Eventos corporativos"],
-        isPromoted: true
-    },
-    {
-        id: "3",
-        name: "Grupo Niche",
-        image: "https://images.unsplash.com/photo-1528111719972-7c24b8814d56?q=80&w=1470&auto=format&fit=crop",
-        rating: 4.9,
-        price: "$600.000 - $1.000.000",
-        location: "Cali",
-        genre: ["Salsa"],
-        instrument: "Banda completa",
-        availability: ["Fines de semana", "Festivales"],
-        isPromoted: false
-    },
-    {
-        id: "4",
-        name: "DJ Luian",
-        image: "https://images.unsplash.com/photo-1571310100246-e0676f359b42?q=80&w=1470&auto=format&fit=crop",
-        rating: 4.6,
-        price: "$350.000 - $700.000",
-        location: "Barranquilla",
-        genre: ["Electrónica", "Reggaeton"],
-        instrument: "DJ",
-        availability: ["Viernes y Sábados", "Clubes"],
-        isPromoted: true,
-        discount: "20% de descuento en contrataciones de más de 3 horas"
-    }
-];
-
+// Categorías populares (esto podría venir de una API también)
 const popularCategories = [
     {
         id: "1",
@@ -88,18 +35,6 @@ const popularCategories = [
     }
 ];
 
-// Géneros musicales para filtrado
-const genres = [
-    "Pop", "Rock", "Jazz", "Clásica", "Electrónica",
-    "Reggaeton", "Salsa", "Vallenato", "Ranchera", "Mariachi"
-];
-
-// Instrumentos para filtrado
-const instruments = [
-    "Vocal", "Guitarra", "Piano", "Batería", "Bajo",
-    "Saxofón", "Violín", "DJ", "Banda completa", "Trompeta"
-];
-
 export default function Dashboard() {
     const router = useRouter();
     const [searchTerm, setSearchTerm] = useState("");
@@ -109,6 +44,36 @@ export default function Dashboard() {
     const [isFiltersVisible, setIsFiltersVisible] = useState(false);
     const [userRole, setUserRole] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    // Estados para almacenar datos de las APIs
+    const [musicians, setMusicians] = useState<Musician[]>([]);
+    const [genreList, setGenreList] = useState<string[]>([]);
+    const [instrumentList, setInstrumentList] = useState<string[]>([]);
+
+    // Cargar datos de APIs
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                // Cargar músicos
+                const musiciansRes = await fetch('/api/musicians');
+                const musiciansData = await musiciansRes.json();
+                setMusicians(Array.isArray(musiciansData) ? musiciansData : []);
+
+                // Cargar géneros
+                const genresRes = await fetch('/api/genres');
+                const genresData = await genresRes.json();
+                setGenreList(Array.isArray(genresData) ? genresData : []);
+
+                // Cargar instrumentos
+                const instrumentsRes = await fetch('/api/instruments');
+                const instrumentsData = await instrumentsRes.json();
+                setInstrumentList(Array.isArray(instrumentsData) ? instrumentsData : []);
+            } catch (error) {
+                console.error('Error al cargar datos:', error);
+            }
+        }
+
+        fetchData();
+    }, []);
 
     useEffect(() => {
         // Comprobar el rol del usuario
@@ -137,13 +102,13 @@ export default function Dashboard() {
         return null;
     }
 
-    // Función para filtrar músicos
-    const filteredMusicians = featuredMusicians.filter(musician => {
+    // Función para filtrar músicos - asegurarse de que musicians sea un array
+    const filteredMusicians = Array.isArray(musicians) ? musicians.filter(musician => {
         // Filtro por búsqueda
         const searchMatch =
             searchTerm === "" ||
             musician.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            musician.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (musician.location && musician.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
             musician.instrument.toLowerCase().includes(searchTerm.toLowerCase()) ||
             musician.genre.some(g => g.toLowerCase().includes(searchTerm.toLowerCase()));
 
@@ -152,14 +117,14 @@ export default function Dashboard() {
             selectedGenres.length === 0 ||
             musician.genre.some(g => selectedGenres.includes(g));
 
-        // Filtro por instrumento
+        // Filtro por instrumento (adaptado para la nueva estructura que puede incluir múltiples instrumentos)
         const instrumentMatch =
             selectedInstruments.length === 0 ||
-            selectedInstruments.includes(musician.instrument);
+            selectedInstruments.some(inst => musician.instrument.includes(inst));
 
         // Devolver si cumple todos los filtros
         return searchMatch && genreMatch && instrumentMatch;
-    });
+    }) : [];
 
     // Función para togglear géneros seleccionados
     const toggleGenre = (genre: string) => {
@@ -242,7 +207,7 @@ export default function Dashboard() {
                                 <div className="mb-4">
                                     <h3 className="font-medium mb-2">Géneros Musicales</h3>
                                     <div className="space-y-2">
-                                        {genres.slice(0, 6).map(genre => (
+                                        {genreList.slice(0, 6).map(genre => (
                                             <div key={genre} className="flex items-center">
                                                 <input
                                                     type="checkbox"
@@ -254,7 +219,7 @@ export default function Dashboard() {
                                                 <label htmlFor={`genre-${genre}`} className="text-sm">{genre}</label>
                                             </div>
                                         ))}
-                                        {genres.length > 6 && (
+                                        {genreList.length > 6 && (
                                             <Button variant="link" className="text-xs p-0 h-auto text-primary">
                                                 Ver más géneros
                                             </Button>
@@ -265,7 +230,7 @@ export default function Dashboard() {
                                 <div className="mb-4">
                                     <h3 className="font-medium mb-2">Instrumentos</h3>
                                     <div className="space-y-2">
-                                        {instruments.slice(0, 6).map(instrument => (
+                                        {instrumentList.slice(0, 6).map(instrument => (
                                             <div key={instrument} className="flex items-center">
                                                 <input
                                                     type="checkbox"
@@ -277,7 +242,7 @@ export default function Dashboard() {
                                                 <label htmlFor={`instrument-${instrument}`} className="text-sm">{instrument}</label>
                                             </div>
                                         ))}
-                                        {instruments.length > 6 && (
+                                        {instrumentList.length > 6 && (
                                             <Button variant="link" className="text-xs p-0 h-auto text-primary">
                                                 Ver más instrumentos
                                             </Button>
@@ -363,7 +328,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                                {featuredMusicians.filter(m => m.isPromoted).map(musician => (
+                                {Array.isArray(musicians) && musicians.filter(m => m.isPromoted).map(musician => (
                                     <MusicianCard key={musician.id} musician={musician} />
                                 ))}
                             </div>

@@ -1,149 +1,162 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model client {
+  id                   String                 @id @default(cuid())
+  username             String                 @unique(map: "Client_username_key") @db.VarChar(30)
+  password             String                 @db.VarChar(255)
+  name                 String                 @db.VarChar(50)
+  email                String                 @unique(map: "Client_email_key") @db.VarChar(50)
+  phone                String                 @db.VarChar(20)
+  completedreservation completedreservation[]
+  message              message[]
+  reservation          reservation[]
+  review               review[]
 }
 
-model Instrument {
-  id                 String                @id @default(cuid())
-  name               String                @db.VarChar(30)
-  musicianInstruments MusicianInstrument[]
+model completedreservation {
+  id              String        @id @default(cuid())
+  clientId        String
+  musicianId      String
+  reservationDate DateTime      @default(now())
+  paymentMethodId String
+  client          client        @relation(fields: [clientId], references: [id], map: "CompletedReservation_clientId_fkey")
+  musician        musician      @relation(fields: [musicianId], references: [id], map: "CompletedReservation_musicianId_fkey")
+  paymentmethod   paymentmethod @relation(fields: [paymentMethodId], references: [id], map: "CompletedReservation_paymentMethodId_fkey")
+
+  @@index([clientId], map: "CompletedReservation_clientId_fkey")
+  @@index([musicianId], map: "CompletedReservation_musicianId_fkey")
+  @@index([paymentMethodId], map: "CompletedReservation_paymentMethodId_fkey")
 }
 
-model MusicalGenre {
-  id              String          @id @default(cuid())
-  name            String          @db.VarChar(30)
-  musicianGenres  MusicianGenre[]
+model instrument {
+  id                 String               @id @default(cuid())
+  name               String               @db.VarChar(30)
+  musicianinstrument musicianinstrument[]
 }
 
-model Client {
-  id            String        @id @default(cuid())
-  username      String        @unique @db.VarChar(30)
-  password      String        @db.VarChar(20)
-  name          String        @db.VarChar(50)
-  email         String        @unique @db.VarChar(50)
-  phone         String        @db.VarChar(20)
-  reservations  Reservation[]
-  reviews       Review[]
-  messages Message[]
-  completeReservation CompletedReservation[]
+model media {
+  id         String   @id @default(cuid())
+  musicianId String
+  mediaType  String   @db.VarChar(10)
+  filePath   String   @db.VarChar(255)
+  uploadDate DateTime @default(now())
+  musician   musician @relation(fields: [musicianId], references: [id], map: "Media_musicianId_fkey")
+
+  @@index([musicianId], map: "Media_musicianId_fkey")
 }
 
-model Musician {
-  id                  String               @id @default(cuid())
-  username            String               @unique @db.VarChar(30)
-  password            String               @db.VarChar(20)
-  name                String               @db.VarChar(50)
-  email               String               @unique @db.VarChar(50)
-  phone               String               @db.VarChar(20)
-  reservations        Reservation[]
-  reviews             Review[]
-  media               Media[]
-  musicianGenres      MusicianGenre[]
-  musicianInstruments MusicianInstrument[]
-  messages Message[]
-  completeReservation CompletedReservation[]
+model message {
+  id            String      @id @default(cuid())
+  clientId      String
+  musicianId    String
+  content       String      @db.Text
+  timestamp     DateTime    @default(now())
+  reservationId String
+  client        client      @relation(fields: [clientId], references: [id], map: "Message_clientId_fkey")
+  musician      musician    @relation(fields: [musicianId], references: [id], map: "Message_musicianId_fkey")
+  reservation   reservation @relation(fields: [reservationId], references: [id], map: "Message_reservationId_fkey")
+
+  @@index([clientId], map: "Message_clientId_fkey")
+  @@index([musicianId], map: "Message_musicianId_fkey")
+  @@index([reservationId], map: "Message_reservationId_fkey")
 }
 
-model ReservationStatus {
-  id           String        @id @default(cuid())
-  name         String        @db.VarChar(20)
-  reservations Reservation[]
+model musicalgenre {
+  id            String          @id @default(cuid())
+  name          String          @db.VarChar(30)
+  musiciangenre musiciangenre[]
 }
 
-model RequestStatus {
+model musician {
+  id                   String                 @id @default(cuid())
+  username             String                 @unique(map: "Musician_username_key") @db.VarChar(30)
+  password             String                 @db.VarChar(255)
+  name                 String                 @db.VarChar(50)
+  email                String                 @unique(map: "Musician_email_key") @db.VarChar(50)
+  phone                String                 @db.VarChar(20)
+  completedreservation completedreservation[]
+  media                media[]
+  message              message[]
+  musiciangenre        musiciangenre[]
+  musicianinstrument   musicianinstrument[]
+  reservation          reservation[]
+  review               review[]
+}
+
+model musiciangenre {
+  id             String       @id @default(cuid())
+  musicianId     String
+  musicalGenreId String
+  musicalgenre   musicalgenre @relation(fields: [musicalGenreId], references: [id], map: "MusicianGenre_musicalGenreId_fkey")
+  musician       musician     @relation(fields: [musicianId], references: [id], map: "MusicianGenre_musicianId_fkey")
+
+  @@unique([musicianId, musicalGenreId], map: "MusicianGenre_musicianId_musicalGenreId_key")
+  @@index([musicalGenreId], map: "MusicianGenre_musicalGenreId_fkey")
+}
+
+model musicianinstrument {
+  id           String     @id @default(cuid())
+  musicianId   String
+  instrumentId String
+  instrument   instrument @relation(fields: [instrumentId], references: [id], map: "MusicianInstrument_instrumentId_fkey")
+  musician     musician   @relation(fields: [musicianId], references: [id], map: "MusicianInstrument_musicianId_fkey")
+
+  @@unique([musicianId, instrumentId], map: "MusicianInstrument_musicianId_instrumentId_key")
+  @@index([instrumentId], map: "MusicianInstrument_instrumentId_fkey")
+}
+
+model paymentmethod {
+  id                   String                 @id @default(cuid())
+  name                 String                 @db.VarChar(30)
+  completedreservation completedreservation[]
+}
+
+model requeststatus {
   id   String @id @default(cuid())
   name String @db.VarChar(20)
 }
 
-model Message {
-  id  String  @id @default(cuid())
-  clientId String 
-  musicianId String
-  content String @db.Text
-  timestamp DateTime @default(now())
-  reservationId String
-  client Client @relation(fields:[clientId],references: [id])
-  reservation Reservation @relation(fields: [reservationId], references: [id])
-  musician Musician @relation(fields: [musicianId], references: [id])
-}
-
-model PaymentMethod {
-  id String @id @default(cuid())
-  name String @db.VarChar(30)
-  completedReservation CompletedReservation[]
-}
-
-model Reservation {
-  id                 String            @id @default(cuid())
-  clientId           String
-  client             Client            @relation(fields: [clientId], references: [id])
-  musicianId         String
-  musician           Musician          @relation(fields: [musicianId], references: [id])
-  price              Decimal           @db.Decimal(10, 2)
-  creationDate       DateTime @default(now())
-  serviceDate        DateTime
+model reservation {
+  id                  String            @id @default(cuid())
+  clientId            String
+  musicianId          String
+  price               Decimal           @db.Decimal(10, 2)
+  creationDate        DateTime          @default(now())
+  serviceDate         DateTime
   reservationStatusId String
-  reservationStatus   ReservationStatus @relation(fields: [reservationStatusId], references: [id])
-  messages Message[]
+  message             message[]
+  client              client            @relation(fields: [clientId], references: [id], map: "Reservation_clientId_fkey")
+  musician            musician          @relation(fields: [musicianId], references: [id], map: "Reservation_musicianId_fkey")
+  reservationstatus   reservationstatus @relation(fields: [reservationStatusId], references: [id], map: "Reservation_reservationStatusId_fkey")
+
+  @@index([clientId], map: "Reservation_clientId_fkey")
+  @@index([musicianId], map: "Reservation_musicianId_fkey")
+  @@index([reservationStatusId], map: "Reservation_reservationStatusId_fkey")
 }
 
-model Review {
-  id          String   @id @default(cuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id])
-  musicianId  String
-  musician    Musician @relation(fields: [musicianId], references: [id])
-  calificacion Int
-  description String?  @db.Text
-  reviewDate  DateTime @default(now())
+model reservationstatus {
+  id          String        @id @default(cuid())
+  name        String        @db.VarChar(20)
+  reservation reservation[]
 }
 
-model Media {
-  id         String   @id @default(cuid())
-  musicianId String
-  musician   Musician @relation(fields: [musicianId], references: [id])
-  mediaType  String   @db.VarChar(10)
-  filePath   String   @db.VarChar(255)
-  uploadDate DateTime @default(now())
-}
-
-model CompletedReservation {
- id String @id @default(cuid())
- clientId String
- musicianId String
- reservationDate DateTime @default(now())
- paymentMethodId String
- client Client @relation(fields: [clientId],references: [id])
- musician Musician @relation(fields: [musicianId],references: [id])
- paymentMethod PaymentMethod @relation(fields: [paymentMethodId],references: [id])
-}
-
-model MusicianGenre {
-  id            String      @id @default(cuid())
-  musicianId    String
-  musician      Musician    @relation(fields: [musicianId], references: [id])
-  musicalGenreId String
-  musicalGenre   MusicalGenre @relation(fields: [musicalGenreId], references: [id])
-
-  @@unique([musicianId, musicalGenreId])
-}
-
-model MusicianInstrument {
-  id           String     @id @default(cuid())
+model review {
+  id           String   @id @default(cuid())
+  clientId     String
   musicianId   String
-  musician     Musician   @relation(fields: [musicianId], references: [id])
-  instrumentId String
-  instrument   Instrument @relation(fields: [instrumentId], references: [id])
+  calificacion Int
+  description  String?  @db.Text
+  reviewDate   DateTime @default(now())
+  client       client   @relation(fields: [clientId], references: [id], map: "Review_clientId_fkey")
+  musician     musician @relation(fields: [musicianId], references: [id], map: "Review_musicianId_fkey")
 
-  @@unique([musicianId, instrumentId])
+  @@index([clientId], map: "Review_clientId_fkey")
+  @@index([musicianId], map: "Review_musicianId_fkey")
 }

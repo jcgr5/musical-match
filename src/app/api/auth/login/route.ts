@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import bcrypt from 'bcrypt';
 import { generateToken } from '@/lib/jwt';
+import { comparePasswords, hashPassword, isBcryptHash } from '@/utils/bcrypt';
 
 const prisma = new PrismaClient({
     log: ['query', 'info', 'warn', 'error'],
@@ -50,10 +50,6 @@ export async function POST(request: Request) {
         console.log("Intentando login para:", email);
         console.log("Contraseña ingresada (longitud):", password.length);
         console.log("Rol solicitado:", requestedRole || "No especificado");
-
-        // SOLUCIÓN PARA DESARROLLO: Permitir acceso con cualquier credencial
-        // IMPORTANTE: NUNCA usar esto en producción
-        const isDevMode = false; // Cambiar a false en producción
 
         // Verificar si el usuario existe en ambas tablas
         const existsAsClient = await prisma.client.findUnique({
@@ -117,65 +113,19 @@ export async function POST(request: Request) {
         }
 
         console.log("Usuario encontrado:", user.username, "con rol:", role);
-        console.log("Password almacenado:", user.password.substring(0, 10) + "..." + (user.password.length > 20 ? user.password.substring(user.password.length - 5) : ""));
-        console.log("¿Es un hash de bcrypt?:", user.password.match(/^\$2[aby]\$\d+\$/) ? "Sí" : "No");
+        console.log("Tipo de contraseña almacenada:", isBcryptHash(user.password) ? "Hash bcrypt" : "Texto plano");
 
-        // MODO PRUEBA: Comparación directa sin bcrypt
-        // IMPORTANTE: Esto es solo para diagnóstico, no usar en producción
-        console.log("*** MODO PRUEBA: Usando comparación directa sin bcrypt ***");
-        console.log("Contraseña ingresada:", password);
-
-        // Crear un usuario de prueba o modificar uno existente para probar
-        // Actualizar la contraseña en la base de datos a un valor conocido en texto plano
-        try {
-            if (role === "CLIENT") {
-                await prisma.client.update({
-                    where: { id: user.id },
-                    data: { password: "123456" } // Contraseña de prueba en texto plano
-                });
-            } else {
-                await prisma.musician.update({
-                    where: { id: user.id },
-                    data: { password: "123456" } // Contraseña de prueba en texto plano
-                });
-            }
-            console.log("Contraseña actualizada a texto plano para pruebas: 123456");
-
-            // Recargar usuario con la nueva contraseña
-            if (role === "CLIENT") {
-                user = await prisma.client.findUnique({
-                    where: { id: user.id },
-                    select: {
-                        id: true,
-                        username: true,
-                        name: true,
-                        email: true,
-                        password: true,
-                        phone: true
-                    }
-                });
-            } else {
-                user = await prisma.musician.findUnique({
-                    where: { id: user.id },
-                    select: {
-                        id: true,
-                        username: true,
-                        name: true,
-                        email: true,
-                        password: true,
-                        phone: true
-                    }
-                });
-            }
-
-            console.log("Usuario recargado, nueva contraseña:", user.password);
-        } catch (updateError) {
-            console.error("Error al actualizar contraseña para pruebas:", updateError);
+        // Verificar si el hash está truncado (menos de 30 caracteres pero patrón de bcrypt)
+        const hashTruncado = user.password.match(/^\$2[aby]\$\d+\$/) && user.password.length < 30;
+        if (hashTruncado) {
+            console.log("ALERTA: Se detectó un hash de bcrypt truncado en la base de datos");
+            console.log("Hash truncado:", user.password);
         }
 
-        // Comparación simple directa
-        const passwordMatch = (password === user.password);
-        console.log("Comparación directa:", password, "===", user.password, "=>", passwordMatch);
+        // VERIFICACIÓN DE CONTRASEÑA
+        console.log("Iniciando verificación de contraseña");
+        const passwordMatch = await comparePasswords(password, user.password);
+        console.log("Resultado de verificación de contraseña:", passwordMatch ? "CORRECTA" : "INCORRECTA");
 
         if (!passwordMatch) {
             console.log("Contraseña incorrecta");
@@ -186,6 +136,32 @@ export async function POST(request: Request) {
         }
 
         console.log("Contraseña correcta");
+
+        // Actualizar contraseña si está en texto plano o es un hash truncado
+        if ((!isBcryptHash(user.password) || hashTruncado) && passwordMatch) {
+            try {
+                console.log("Actualizando contraseña en la base de datos");
+                console.log("Motivo:", hashTruncado ? "Hash truncado detectado" : "No es un hash bcrypt");
+
+                const hashedPassword = await hashPassword(password);
+                if (role === "CLIENT") {
+                    await prisma.client.update({
+                        where: { id: user.id },
+                        data: { password: hashedPassword }
+                    });
+                } else {
+                    await prisma.musician.update({
+                        where: { id: user.id },
+                        data: { password: hashedPassword }
+                    });
+                }
+                console.log("Contraseña actualizada correctamente a hash bcrypt completo");
+                console.log("Nuevo hash:", hashedPassword.substring(0, 10) + "...");
+            } catch (hashError) {
+                console.error("Error al actualizar a hash:", hashError);
+                // No fallamos el login si esto falla
+            }
+        }
 
         // Comprobar si es su primer inicio de sesión o si existe en ambas tablas
         const existsInBothTables = existsAsClient && existsAsMusician;

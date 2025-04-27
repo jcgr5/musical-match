@@ -31,6 +31,16 @@ interface Musician {
     }[];
 }
 
+// Tipos para el usuario
+interface UserData {
+    id: string;
+    name: string;
+    username: string;
+    email: string;
+    phone: string;
+    role?: string;
+}
+
 export default function MusicianProfilePage() {
     const router = useRouter();
     const params = useParams();
@@ -38,7 +48,7 @@ export default function MusicianProfilePage() {
 
     const [currentImage, setCurrentImage] = useState(0);
     const [userRole, setUserRole] = useState<string | null>(null);
-    const [userData, setUserData] = useState<any>(null);
+    const [userData, setUserData] = useState<UserData | null>(null);
     const [loading, setLoading] = useState(true);
     const [isReservationDialogOpen, setIsReservationDialogOpen] = useState(false);
     const [reservation, setReservation] = useState<ReservationData | null>(null);
@@ -216,7 +226,7 @@ export default function MusicianProfilePage() {
                             <span>{musician.availability}</span>
                         </div>
 
-                        {userRole === "CLIENT" && (
+                        {userRole === "CLIENT" && userData?.id !== musicianId && (
                             <Button
                                 className="w-full mt-6 bg-black hover:bg-gray-800 text-white"
                                 onClick={() => setIsReservationDialogOpen(true)}
