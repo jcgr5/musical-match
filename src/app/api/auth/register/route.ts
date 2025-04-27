@@ -18,7 +18,7 @@ const registerSchema = z.object({
     role: z.enum(['CLIENT', 'MUSICIAN'], {
         required_error: "El rol es requerido",
         invalid_type_error: "El rol debe ser CLIENT o MUSICIAN"
-    }).optional().default('CLIENT')
+    })
 });
 
 export async function POST(request: Request) {
@@ -62,9 +62,8 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // Forzar el rol a CLIENT siempre, independientemente de lo que se reciba
-        const { name, username, email, password, phone } = result.data;
-        const role = 'CLIENT'; // Siempre crear como Cliente inicialmente
+        // Usar el rol seleccionado por el usuario
+        const { name, username, email, password, phone, role } = result.data;
 
         console.log(`Registro de usuario: ${username}, rol: ${role}`);
 
@@ -119,24 +118,44 @@ export async function POST(request: Request) {
             const hashedPassword = await bcrypt.hash(password, 10);
             console.log("Contraseña hasheada correctamente");
 
-            // Siempre creamos un usuario de tipo CLIENT inicialmente
-            // El usuario podrá seleccionar su rol (músico o cliente) en su primer inicio de sesión
-            const user = await prisma.client.create({
-                data: {
-                    name,
-                    username,
-                    email,
-                    password: hashedPassword,
-                    phone
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    username: true,
-                    email: true,
-                    phone: true,
-                }
-            });
+            // Crear usuario según el rol seleccionado
+            let user;
+
+            if (role === 'CLIENT') {
+                user = await prisma.client.create({
+                    data: {
+                        name,
+                        username,
+                        email,
+                        password: hashedPassword,
+                        phone
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        email: true,
+                        phone: true,
+                    }
+                });
+            } else if (role === 'MUSICIAN') {
+                user = await prisma.musician.create({
+                    data: {
+                        name,
+                        username,
+                        email,
+                        password: hashedPassword,
+                        phone
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        username: true,
+                        email: true,
+                        phone: true,
+                    }
+                });
+            }
 
             console.log("Usuario creado correctamente:", user);
             return NextResponse.json({
