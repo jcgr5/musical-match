@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, MapPin, DollarSign, Calendar, Star, Music, User, Mail, Phone } from "lucide-react";
 import Image from "next/image";
+import { ChatHistory } from "@/components/chat-history";
 
 // Interfaz para tipos de usuarios
 interface UserData {
@@ -258,6 +259,9 @@ export default function ProfilePage() {
                                 <TabsTrigger value="repertoire">Repertorio</TabsTrigger>
                                 <TabsTrigger value="reviews">Opiniones</TabsTrigger>
                                 <TabsTrigger value="gallery">Galería</TabsTrigger>
+                                {userRole === "MUSICIAN" && (
+                                    <TabsTrigger value="chats">Mis Chats</TabsTrigger>
+                                )}
                             </TabsList>
 
                             <TabsContent value="description" className="mt-4">
@@ -327,6 +331,14 @@ export default function ProfilePage() {
                                     </div>
                                 </div>
                             </TabsContent>
+
+                            {userRole === "MUSICIAN" && (
+                                <TabsContent value="chats" className="mt-4">
+                                    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                                        <ChatHistory />
+                                    </div>
+                                </TabsContent>
+                            )}
 
                             <TabsContent value="gallery" className="mt-4">
                                 <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">

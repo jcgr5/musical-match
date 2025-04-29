@@ -226,6 +226,7 @@ export default function MusicianProfilePage() {
                             <span>{musician.availability}</span>
                         </div>
 
+                        {/* Botón de reserva - solo visible para los clientes */}
                         {userRole === "CLIENT" && userData?.id !== musicianId && (
                             <Button
                                 className="w-full mt-6 bg-black hover:bg-gray-800 text-white"

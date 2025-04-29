@@ -24,12 +24,14 @@ interface ChatProps {
     clientName: string;
     musicianName: string;
     reservationData?: ReservationData;
+    reservationId?: string;
 }
 
-export function Chat({ clientId, musicianId, clientName, musicianName, reservationData }: ChatProps) {
+export function Chat({ clientId, musicianId, clientName, musicianName, reservationData, reservationId }: ChatProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState("");
     const [userRole, setUserRole] = useState<"CLIENT" | "MUSICIAN" | null>(null);
+    const [userId, setUserId] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -43,15 +45,49 @@ export function Chat({ clientId, musicianId, clientName, musicianName, reservati
 
         if (storedUser) {
             try {
-                // Parseamos para verificar que es JSON válido, pero no lo usamos
-                JSON.parse(storedUser);
+                const userData = JSON.parse(storedUser);
+                setUserId(userData.id);
             } catch (error) {
                 console.error("Error parsing user data", error);
             }
         }
 
-        // Si hay datos de reserva, crear un mensaje inicial
-        if (reservationData) {
+        const fetchMessages = async () => {
+            if (!reservationId) return;
+
+            try {
+                const response = await fetch(`/api/messages?reservationId=${reservationId}`);
+                if (!response.ok) {
+                    throw new Error('Error obteniendo mensajes');
+                }
+
+                const data = await response.json();
+
+                if (data.success && Array.isArray(data.data)) {
+                    // Transformar al formato esperado por el componente
+                    const formattedMessages = data.data.map((msg: any) => ({
+                        id: msg.id,
+                        senderId: msg.clientId === userId ? msg.clientId : msg.musicianId,
+                        receiverId: msg.clientId === userId ? msg.musicianId : msg.clientId,
+                        content: msg.content,
+                        timestamp: new Date(msg.timestamp),
+                        senderName: msg.clientId === userId ? msg.client.name : msg.musician.name,
+                        senderType: msg.clientId === userId ? "client" : "musician"
+                    }));
+
+                    setMessages(formattedMessages);
+                }
+            } catch (error) {
+                console.error('Error al cargar mensajes:', error);
+            }
+        };
+
+        // Si hay un reservationId, cargar mensajes de la API
+        if (reservationId) {
+            fetchMessages();
+        }
+        // Si solo hay datos de reserva pero no ID, crear mensaje inicial
+        else if (reservationData) {
             const initialMessage: Message = {
                 id: Date.now().toString(),
                 senderId: clientId,
@@ -62,40 +98,16 @@ export function Chat({ clientId, musicianId, clientName, musicianName, reservati
                 senderType: "client"
             };
             setMessages([initialMessage]);
-        } else {
-            // En un escenario real, aquí cargaríamos los mensajes de la API
-            // Por ahora, simularemos algunos mensajes
-            const demoMessages: Message[] = [
-                {
-                    id: "1",
-                    senderId: clientId,
-                    receiverId: musicianId,
-                    content: "Hola, estoy interesado en contratarte para mi evento",
-                    timestamp: new Date(Date.now() - 3600000),
-                    senderName: clientName,
-                    senderType: "client"
-                },
-                {
-                    id: "2",
-                    senderId: musicianId,
-                    receiverId: clientId,
-                    content: "¡Hola! Gracias por contactarme. ¿Para qué fecha necesitas el servicio?",
-                    timestamp: new Date(Date.now() - 3500000),
-                    senderName: musicianName,
-                    senderType: "musician"
-                }
-            ];
-            setMessages(demoMessages);
         }
-    }, [clientId, musicianId, clientName, musicianName, reservationData]);
+    }, [clientId, musicianId, clientName, musicianName, reservationData, reservationId, userId]);
 
     // Auto-scroll cuando se añaden nuevos mensajes
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    const handleSendMessage = () => {
-        if (!newMessage.trim() || !userRole) return;
+    const handleSendMessage = async () => {
+        if (!newMessage.trim() || !userRole || !reservationId) return;
 
         const message: Message = {
             id: Date.now().toString(),
@@ -107,11 +119,37 @@ export function Chat({ clientId, musicianId, clientName, musicianName, reservati
             senderType: userRole === "CLIENT" ? "client" : "musician"
         };
 
+        // Agregar mensaje localmente para UX inmediata
         setMessages(prev => [...prev, message]);
         setNewMessage("");
 
-        // En un escenario real, aquí enviaríamos el mensaje a la API
-        // saveMessageToDatabase(message);
+        // Enviar mensaje a la API
+        try {
+            const response = await fetch('/api/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    clientId,
+                    musicianId,
+                    content: message.content,
+                    reservationId
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al enviar mensaje');
+            }
+
+            const data = await response.json();
+            if (data.success) {
+                console.log('Mensaje enviado correctamente');
+            }
+        } catch (error) {
+            console.error('Error al enviar mensaje:', error);
+            // Notificar al usuario sobre el error
+        }
     };
 
     const createReservationMessage = (data: ReservationData): string => {
@@ -144,28 +182,26 @@ Comentarios adicionales: ${data.comments || "Ninguno"}
                         key={message.id}
                         className={`flex ${message.senderType === (userRole === "CLIENT" ? "client" : "musician") ? "justify-end" : "justify-start"}`}
                     >
-                        <div className="flex max-w-[80%]">
-                            {message.senderType !== (userRole === "CLIENT" ? "client" : "musician") && (
-                                <Avatar className="h-8 w-8 mr-2">
-                                    <AvatarImage src="/images/avatar.jpg" />
-                                    <AvatarFallback>
-                                        {message.senderName?.charAt(0) || "U"}
-                                    </AvatarFallback>
-                                </Avatar>
-                            )}
-                            <div>
-                                <div
-                                    className={`rounded-lg px-4 py-2 whitespace-pre-wrap ${message.senderType === (userRole === "CLIENT" ? "client" : "musician")
-                                        ? "bg-black text-white"
-                                        : "bg-gray-100 text-gray-800"
-                                        }`}
-                                >
-                                    {message.content}
-                                </div>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {format(new Date(message.timestamp), "h:mm a")}
-                                </p>
+                        {message.senderType !== (userRole === "CLIENT" ? "client" : "musician") && (
+                            <Avatar className="h-8 w-8 mr-2">
+                                <AvatarImage src="/images/avatar.jpg" />
+                                <AvatarFallback>
+                                    {message.senderName?.charAt(0) || "U"}
+                                </AvatarFallback>
+                            </Avatar>
+                        )}
+                        <div>
+                            <div
+                                className={`rounded-lg px-4 py-2 whitespace-pre-wrap ${message.senderType === (userRole === "CLIENT" ? "client" : "musician")
+                                    ? "bg-black text-white"
+                                    : "bg-gray-100 text-gray-800"
+                                    }`}
+                            >
+                                {message.content}
                             </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {format(new Date(message.timestamp), "h:mm a")}
+                            </p>
                         </div>
                     </div>
                 ))}
