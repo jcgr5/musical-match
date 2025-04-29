@@ -65,8 +65,8 @@ export function SignInForm({
         setLoading(true)
 
         try {
-            // Si ya se tiene userData pero no se ha elegido rol, significa que estamos en la segunda etapa
-            if (userData && !values.role) {
+            // Solo verificamos la selección de rol si estamos en el modo de selección de rol
+            if (showRoleSelector && !values.role) {
                 setError("Por favor selecciona un rol para continuar")
                 setLoading(false)
                 return
