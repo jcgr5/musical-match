@@ -229,9 +229,9 @@ export function ChatHistory() {
     }
 
     return (
-        <div className="container mx-auto py-4">
+        <div className="p-4">
             <Tabs defaultValue="pending" onValueChange={setActiveTab}>
-                <TabsList className="mb-4">
+                <TabsList className="mb-6 w-full justify-start overflow-x-auto">
                     <TabsTrigger value="pending">Pendientes</TabsTrigger>
                     <TabsTrigger value="accepted">Aceptadas</TabsTrigger>
                     <TabsTrigger value="payment_pending">Pago Pendiente</TabsTrigger>
@@ -239,7 +239,7 @@ export function ChatHistory() {
                     <TabsTrigger value="all">Todas</TabsTrigger>
                 </TabsList>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-1">
                         <div className="space-y-4">
                             {filteredReservations.length > 0 ? (

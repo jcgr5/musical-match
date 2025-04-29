@@ -246,9 +246,15 @@ export default function ProfilePage() {
                             <span>{artist.availability}</span>
                         </div>
 
-                        <Button className="w-full mt-6 bg-black hover:bg-gray-800 text-white">
-                            Reservar artista
-                        </Button>
+                        {/* El botón "Reservar artista" solo se muestra si es un cliente viendo el perfil del músico */}
+                        {userRole === "CLIENT" && (
+                            <Button
+                                className="w-full mt-6 bg-black hover:bg-gray-800 text-white"
+                                onClick={() => router.push(`/musicians/${userData?.id}`)}
+                            >
+                                Reservar artista
+                            </Button>
+                        )}
                     </div>
 
                     {/* Contenido principal - tabs */}
