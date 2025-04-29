@@ -14,7 +14,11 @@ async function main() {
     await createInstruments();
     await createPaymentMethods();
     await createReservationStatus();
+    await createEvents();
     await createUsers();
+    await updateMusiciansWithEvents();
+    await createSampleReviews();
+    await createSampleReservations();
 
     console.log('Seed completado con éxito!');
 }
@@ -30,10 +34,12 @@ async function cleanData() {
     await prisma.media.deleteMany({});
     await prisma.musiciangenre.deleteMany({});
     await prisma.musicianinstrument.deleteMany({});
+    await prisma.musicianevent.deleteMany({});
     await prisma.client.deleteMany({});
     await prisma.musician.deleteMany({});
     await prisma.musicalgenre.deleteMany({});
     await prisma.instrument.deleteMany({});
+    await prisma.event.deleteMany({});
     await prisma.paymentmethod.deleteMany({});
     await prisma.reservationstatus.deleteMany({});
     await prisma.requeststatus.deleteMany({});
@@ -149,6 +155,71 @@ async function createReservationStatus() {
     }
 
     console.log(`✅ Creados ${statuses.length} estados de reserva`);
+}
+
+async function createEvents() {
+    console.log('Creando tipos de eventos...');
+
+    const events = [
+        { name: "Bodas" },
+        { name: "Eventos Corporativos" },
+        { name: "Graduaciones" },
+        { name: "Fiestas Privadas" },
+        { name: "Cumpleaños" },
+        { name: "Aniversarios" },
+        { name: "Conciertos" },
+        { name: "Festivales" }
+    ];
+
+    for (const event of events) {
+        await prisma.event.create({
+            data: event
+        });
+    }
+
+    console.log(`✅ Creados ${events.length} tipos de eventos`);
+}
+
+async function updateMusiciansWithEvents() {
+    console.log('Asignando eventos y precios a músicos...');
+
+    // Obtener todos los músicos y eventos
+    const musicians = await prisma.musician.findMany();
+    const events = await prisma.event.findMany();
+
+    // Para cada músico, asignar algunos eventos aleatorios y precios
+    for (const musician of musicians) {
+        // Asignar precios aleatorios
+        const minPrice = Math.floor(Math.random() * 5 + 1) * 100000; // 100k-500k
+        const maxPrice = minPrice + Math.floor(Math.random() * 5 + 1) * 100000; // minPrice + (100k-500k)
+
+        // Actualizar el músico con los precios
+        await prisma.musician.update({
+            where: { id: musician.id },
+            data: {
+                minPrice,
+                maxPrice
+            }
+        });
+
+        // Seleccionar eventos aleatorios (entre 2 y 5)
+        const numEvents = Math.floor(Math.random() * 4) + 2;
+        const selectedEvents = [...events]
+            .sort(() => 0.5 - Math.random())
+            .slice(0, numEvents);
+
+        // Crear relaciones entre músico y eventos
+        for (const event of selectedEvents) {
+            await prisma.musicianevent.create({
+                data: {
+                    musicianId: musician.id,
+                    eventId: event.id
+                }
+            });
+        }
+    }
+
+    console.log(`✅ Actualizados ${musicians.length} músicos con eventos y precios`);
 }
 
 async function createUsers() {
