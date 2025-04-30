@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import {
     Card,
-    CardContent,
     CardDescription,
     CardHeader,
     CardTitle,
@@ -42,14 +41,31 @@ interface Reservation {
     };
 }
 
-export function ChatHistory() {
+interface Conversation {
+    id: string;
+    clientId: string;
+    musicianId: string;
+    clientName: string;
+    musicianName: string;
+    lastMessage: string;
+    timestamp: string;
+}
+
+interface ChatHistoryProps {
+    showOnlyChats?: boolean;
+}
+
+export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
     const [reservations, setReservations] = useState<Reservation[]>([]);
+    const [conversations, setConversations] = useState<Conversation[]>([]);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
     const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+    const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
     const [userRole, setUserRole] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState("pending");
+    const [loadingError, setLoadingError] = useState<string | null>(null);
 
     useEffect(() => {
         // Obtener el rol del usuario desde localStorage
@@ -66,13 +82,18 @@ export function ChatHistory() {
                 setUserId(userData.id);
             } catch (error) {
                 console.error("Error parsing user data", error);
+                setLoadingError("Error al cargar datos del usuario");
             }
         }
     }, []);
 
+    // Cargar reservas solo si no estamos en modo chats
     useEffect(() => {
         const fetchReservations = async () => {
-            if (!userId || !userRole) return;
+            if (!userId || !userRole || showOnlyChats) return;
+
+            setLoading(true);
+            setLoadingError(null);
 
             try {
                 // Construir el parámetro según el rol
@@ -87,24 +108,94 @@ export function ChatHistory() {
 
                 if (data.success && Array.isArray(data.data)) {
                     setReservations(data.data);
+                } else {
+                    throw new Error('Formato de respuesta inesperado');
                 }
-
-                setLoading(false);
             } catch (error) {
                 console.error('Error al cargar reservas:', error);
+                setLoadingError("Error al cargar las reservas. Por favor, intenta nuevamente.");
+            } finally {
                 setLoading(false);
             }
         };
 
         fetchReservations();
-    }, [userId, userRole]);
+    }, [userId, userRole, showOnlyChats]);
+
+    // Cargar conversaciones solo en modo chats
+    useEffect(() => {
+        const fetchConversations = async () => {
+            if (!userId || !userRole || !showOnlyChats) return;
+
+            setLoading(true);
+            setLoadingError(null);
+
+            try {
+                // Obtener todas las conversaciones del usuario
+                const param = userRole === "CLIENT" ? `clientId=${userId}` : `musicianId=${userId}`;
+                const response = await fetch(`/api/messages/conversations?${param}`);
+
+                if (!response.ok) {
+                    throw new Error('Error obteniendo conversaciones');
+                }
+
+                const data = await response.json();
+
+                if (data.success && Array.isArray(data.data)) {
+                    // Cargar detalles para cada conversación
+                    const conversationsData: Conversation[] = [];
+
+                    for (const convo of data.data) {
+                        const otherId = userRole === "CLIENT" ? convo.musicianId : convo.clientId;
+
+                        // Obtener el último mensaje de la conversación
+                        const messagesResponse = await fetch(`/api/messages?${userRole === "CLIENT" ? "clientId" : "musicianId"}=${userId}&${userRole === "CLIENT" ? "musicianId" : "clientId"}=${otherId}&limit=1`);
+
+                        if (messagesResponse.ok) {
+                            const messagesData = await messagesResponse.json();
+
+                            if (messagesData.success && Array.isArray(messagesData.data) && messagesData.data.length > 0) {
+                                const lastMsg = messagesData.data[0];
+
+                                conversationsData.push({
+                                    id: `${userRole === "CLIENT" ? userId : otherId}-${userRole === "CLIENT" ? otherId : userId}`,
+                                    clientId: userRole === "CLIENT" ? userId : otherId,
+                                    musicianId: userRole === "CLIENT" ? otherId : userId,
+                                    clientName: userRole === "CLIENT" ? lastMsg.client.name : lastMsg.client.name,
+                                    musicianName: userRole === "CLIENT" ? lastMsg.musician.name : lastMsg.musician.name,
+                                    lastMessage: lastMsg.content,
+                                    timestamp: lastMsg.timestamp
+                                });
+                            }
+                        }
+                    }
+
+                    setConversations(conversationsData);
+                }
+            } catch (error) {
+                console.error('Error al cargar conversaciones:', error);
+                setLoadingError("Error al cargar los chats. Por favor, intenta nuevamente.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchConversations();
+    }, [userId, userRole, showOnlyChats]);
 
     const handleReservationSelect = (reservation: Reservation) => {
         setSelectedReservation(reservation);
+        setSelectedConversation(null);
+    };
+
+    const handleConversationSelect = (conversation: Conversation) => {
+        setSelectedConversation(conversation);
+        setSelectedReservation(null);
     };
 
     const handleUpdateStatus = async (reservationId: string, status: string) => {
         try {
+            setProcessing(true);
             const response = await fetch('/api/reservations', {
                 method: 'PATCH',
                 headers: {
@@ -143,9 +234,14 @@ export function ChatHistory() {
                         }
                     });
                 }
+            } else {
+                throw new Error(data.message || 'Error al actualizar el estado');
             }
         } catch (error) {
             console.error('Error al actualizar estado:', error);
+            alert('Hubo un error al actualizar el estado. Por favor, inténtalo de nuevo.');
+        } finally {
+            setProcessing(false);
         }
     };
 
@@ -174,7 +270,7 @@ export function ChatHistory() {
             const data = await response.json();
 
             if (data.success && data.url) {
-                // Redirigir al usuario a la página de pago de Stripe
+                // Redirigir al usuario a la página de pago
                 window.location.href = data.url;
             } else {
                 throw new Error('No se pudo obtener la URL de pago');
@@ -218,68 +314,191 @@ export function ChatHistory() {
         }
     };
 
-    // Filtrar reservas según la pestaña activa
+    // Filtrar reservas según la pestaña activa (solo aplica en modo reservas)
     const filteredReservations = reservations.filter(res => {
         if (activeTab === "all") return true;
         return res.reservationStatusId === activeTab;
     });
 
+    // Manejar la aceptación de una prereservación
+    const handleAcceptPrereservation = async (clientId: string, musicianId: string) => {
+        // Solo permitir que los músicos acepten prereservaciones
+        if (userRole !== "MUSICIAN") return;
+
+        if (!clientId || !musicianId) return;
+
+        try {
+            setProcessing(true);
+
+            // En una implementación real, deberíamos tener acceso a estos datos
+            // a través de una API o del contexto de la aplicación
+            // Por ahora usamos valores razonables por defecto
+            const price = 200000;
+            const serviceDate = new Date();
+            serviceDate.setDate(serviceDate.getDate() + 7); // Una semana desde hoy
+            const eventType = 'Evento';
+
+            console.log("Creando reserva con datos:", {
+                clientId,
+                musicianId,
+                price,
+                serviceDate: serviceDate.toISOString(),
+                eventType
+            });
+
+            const response = await fetch('/api/reservations', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    clientId,
+                    musicianId,
+                    price,
+                    serviceDate: serviceDate.toISOString(),
+                    eventType
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Error al crear reserva:", errorData);
+                throw new Error(errorData.message || 'Error al crear la reserva');
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Recargar las reservaciones
+                window.location.reload();
+            } else {
+                throw new Error(data.message || 'Error al crear la reserva');
+            }
+        } catch (error) {
+            console.error('Error al crear reserva:', error);
+            alert('Hubo un error al crear la reserva. Por favor, inténtalo de nuevo.');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     if (loading) {
-        return <div className="flex justify-center p-8">Cargando historial de reservas...</div>;
+        return <div className="flex justify-center p-8">Cargando...</div>;
+    }
+
+    if (loadingError) {
+        return (
+            <div className="p-8 text-center">
+                <p className="text-red-500 mb-4">{loadingError}</p>
+                <Button onClick={() => window.location.reload()}>Reintentar</Button>
+            </div>
+        );
     }
 
     return (
-        <div className="p-4">
-            <Tabs defaultValue="pending" onValueChange={setActiveTab}>
-                <TabsList className="mb-6 w-full justify-start overflow-x-auto">
-                    <TabsTrigger value="pending">Pendientes</TabsTrigger>
-                    <TabsTrigger value="accepted">Aceptadas</TabsTrigger>
-                    <TabsTrigger value="payment_pending">Pago Pendiente</TabsTrigger>
-                    <TabsTrigger value="completed">Completadas</TabsTrigger>
-                    <TabsTrigger value="all">Todas</TabsTrigger>
-                </TabsList>
+        <div className="h-full">
+            <Tabs defaultValue={showOnlyChats ? "all" : "pending"} className="h-full flex flex-col">
+                {!showOnlyChats && (
+                    <TabsList className="justify-start">
+                        <TabsTrigger value="pending" onClick={() => setActiveTab("pending")}>
+                            Pendientes
+                        </TabsTrigger>
+                        <TabsTrigger value="accepted" onClick={() => setActiveTab("accepted")}>
+                            Aceptadas
+                        </TabsTrigger>
+                        <TabsTrigger value="payment_pending" onClick={() => setActiveTab("payment_pending")}>
+                            Pago Pendiente
+                        </TabsTrigger>
+                        <TabsTrigger value="completed" onClick={() => setActiveTab("completed")}>
+                            Completadas
+                        </TabsTrigger>
+                        <TabsTrigger value="all" onClick={() => setActiveTab("all")}>
+                            Todas
+                        </TabsTrigger>
+                    </TabsList>
+                )}
+
+                {showOnlyChats && (
+                    <div className="pb-4 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-xl font-semibold mb-2">Mis Conversaciones</h2>
+                            <p className="text-sm text-gray-500">Gestiona todos tus chats con clientes</p>
+                        </div>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-1">
                         <div className="space-y-4">
-                            {filteredReservations.length > 0 ? (
-                                filteredReservations.map((reservation) => (
-                                    <Card
-                                        key={reservation.id}
-                                        className={`cursor-pointer ${selectedReservation?.id === reservation.id ? 'border-black' : ''}`}
-                                        onClick={() => handleReservationSelect(reservation)}
-                                    >
-                                        <CardHeader className="pb-2">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <CardTitle>
+                            {showOnlyChats ? (
+                                // Mostrar lista de conversaciones
+                                conversations.length > 0 ? (
+                                    conversations.map((conversation) => (
+                                        <Card
+                                            key={conversation.id}
+                                            className={`cursor-pointer ${selectedConversation?.id === conversation.id ? 'border-black' : ''}`}
+                                            onClick={() => handleConversationSelect(conversation)}
+                                        >
+                                            <CardHeader className="pb-2">
+                                                <div className="flex justify-between items-start">
+                                                    <CardTitle className="text-lg">
+                                                        {userRole === "CLIENT" ? conversation.musicianName : conversation.clientName}
+                                                    </CardTitle>
+                                                </div>
+                                                <CardDescription>
+                                                    {conversation.lastMessage.length > 30
+                                                        ? conversation.lastMessage.substring(0, 30) + '...'
+                                                        : conversation.lastMessage}
+                                                    <br />
+                                                    {format(new Date(conversation.timestamp), "dd/MM/yyyy HH:mm")}
+                                                </CardDescription>
+                                            </CardHeader>
+                                        </Card>
+                                    ))
+                                ) : (
+                                    <div className="text-center p-6 bg-gray-50 border rounded-lg">
+                                        <p className="text-gray-500">No tienes conversaciones</p>
+                                    </div>
+                                )
+                            ) : (
+                                // Mostrar lista de reservas (código original)
+                                filteredReservations.length > 0 ? (
+                                    filteredReservations.map((reservation) => (
+                                        <Card
+                                            key={reservation.id}
+                                            className={`cursor-pointer ${selectedReservation?.id === reservation.id ? 'border-black' : ''}`}
+                                            onClick={() => handleReservationSelect(reservation)}
+                                        >
+                                            <CardHeader className="pb-2">
+                                                <div className="flex justify-between items-start">
+                                                    <CardTitle className="text-lg">
                                                         {userRole === "CLIENT" ? reservation.musician.name : reservation.client.name}
                                                     </CardTitle>
-                                                    <CardDescription>
-                                                        {format(new Date(reservation.serviceDate), "dd/MM/yyyy")}
-                                                    </CardDescription>
+                                                    <Badge className={getStatusColor(reservation.reservationStatusId)}>
+                                                        {reservation.reservationstatus.name}
+                                                    </Badge>
                                                 </div>
-                                                <Badge className={getStatusColor(reservation.reservationStatusId)}>
-                                                    {reservation.reservationstatus.name}
-                                                </Badge>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent className="pb-2">
-                                            <p className="text-sm text-gray-500">
-                                                Precio: COP ${reservation.price.toLocaleString()}
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                ))
-                            ) : (
-                                <p className="text-center p-4 text-gray-500">No hay reservas en esta categoría</p>
+                                                <CardDescription>
+                                                    Fecha: {format(new Date(reservation.serviceDate), "dd/MM/yyyy")}
+                                                    <br />
+                                                    Precio: ${reservation.price.toLocaleString()}
+                                                </CardDescription>
+                                            </CardHeader>
+                                        </Card>
+                                    ))
+                                ) : (
+                                    <div className="text-center p-6 bg-gray-50 border rounded-lg">
+                                        <p className="text-gray-500">No hay reservas en esta categoría</p>
+                                    </div>
+                                )
                             )}
                         </div>
                     </div>
 
                     <div className="md:col-span-2">
-                        {selectedReservation ? (
-                            <div className="bg-white rounded-lg border shadow-sm">
+                        {selectedReservation && !showOnlyChats ? (
+                            // Mostrar detalles de reserva y chat (código original)
+                            <div className="border rounded-lg h-full">
                                 <div className="p-4 border-b">
                                     <div className="flex justify-between items-center">
                                         <div>
@@ -297,24 +516,25 @@ export function ChatHistory() {
 
                                     {/* Mostrar botones de acción según el rol y estado */}
                                     {userRole === "MUSICIAN" && selectedReservation.reservationStatusId === "pending" && (
-                                        <div className="flex gap-2 mt-4">
+                                        <div className="mt-4 flex gap-2">
                                             <Button
-                                                onClick={() => handleUpdateStatus(selectedReservation.id, "accepted")}
                                                 className="bg-green-600 hover:bg-green-700"
+                                                onClick={() => handleUpdateStatus(selectedReservation.id, "accepted")}
+                                                disabled={processing}
                                             >
-                                                Aceptar Reserva
+                                                {processing ? 'Procesando...' : 'Aceptar Reserva'}
                                             </Button>
                                             <Button
-                                                onClick={() => handleUpdateStatus(selectedReservation.id, "rejected")}
                                                 variant="outline"
                                                 className="text-red-600 border-red-600 hover:bg-red-50"
+                                                onClick={() => handleUpdateStatus(selectedReservation.id, "rejected")}
+                                                disabled={processing}
                                             >
-                                                Rechazar
+                                                {processing ? 'Procesando...' : 'Rechazar'}
                                             </Button>
                                         </div>
                                     )}
 
-                                    {/* Botón de pago - solo visible para clientes cuando la reserva está aceptada */}
                                     {userRole === "CLIENT" && selectedReservation.reservationStatusId === "accepted" && (
                                         <div className="mt-4">
                                             <Button
@@ -328,18 +548,34 @@ export function ChatHistory() {
                                     )}
                                 </div>
 
-                                {/* Componente de chat */}
+                                {/* Componente de chat para reserva */}
                                 <Chat
                                     clientId={selectedReservation.clientId}
                                     musicianId={selectedReservation.musicianId}
                                     clientName={selectedReservation.client.name}
                                     musicianName={selectedReservation.musician.name}
-                                    reservationId={selectedReservation.id}
+                                    onAcceptPrereservation={handleAcceptPrereservation}
+                                />
+                            </div>
+                        ) : selectedConversation && showOnlyChats ? (
+                            // Mostrar solo el chat para una conversación seleccionada
+                            <div className="border rounded-lg h-full">
+                                <Chat
+                                    clientId={selectedConversation.clientId}
+                                    musicianId={selectedConversation.musicianId}
+                                    clientName={selectedConversation.clientName}
+                                    musicianName={selectedConversation.musicianName}
+                                    onAcceptPrereservation={handleAcceptPrereservation}
                                 />
                             </div>
                         ) : (
                             <div className="flex items-center justify-center h-full border rounded-lg p-8 bg-gray-50">
-                                <p className="text-gray-500">Selecciona una reserva para ver la conversación</p>
+                                <p className="text-gray-500">
+                                    {showOnlyChats
+                                        ? 'Selecciona una conversación para ver el chat'
+                                        : 'Selecciona una reserva para ver la conversación'
+                                    }
+                                </p>
                             </div>
                         )}
                     </div>

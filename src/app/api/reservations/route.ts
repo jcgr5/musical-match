@@ -4,11 +4,19 @@ import { z } from 'zod';
 
 const prisma = new PrismaClient();
 
-// Esquema para la consulta de reservas
-const getReservationsSchema = z.object({
-    clientId: z.string().optional(),
-    musicianId: z.string().optional(),
-    status: z.string().optional()
+// Esquema para crear reserva desde prereservación
+const createReservationSchema = z.object({
+    clientId: z.string(),
+    musicianId: z.string(),
+    price: z.number(),
+    serviceDate: z.string().or(z.date()),
+    eventType: z.string().optional()
+});
+
+// Esquema para actualizar estado de reserva
+const updateReservationSchema = z.object({
+    id: z.string(),
+    status: z.string()
 });
 
 export async function GET(request: Request) {
@@ -16,37 +24,62 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const clientId = searchParams.get('clientId');
         const musicianId = searchParams.get('musicianId');
-        const status = searchParams.get('status');
+        const id = searchParams.get('id');
 
-        // Construir where según parámetros
-        const where: Record<string, unknown> = {};
+        // Por ID específico
+        if (id) {
+            const reservation = await prisma.reservation.findUnique({
+                where: { id },
+                include: {
+                    client: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            phone: true
+                        }
+                    },
+                    musician: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    },
+                    reservationstatus: true
+                }
+            });
 
-        if (clientId) {
-            where.clientId = clientId;
+            if (!reservation) {
+                return NextResponse.json({
+                    success: false,
+                    message: "Reserva no encontrada"
+                }, { status: 404 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                data: reservation
+            });
         }
 
-        if (musicianId) {
-            where.musicianId = musicianId;
-        }
-
-        if (status) {
-            where.reservationStatusId = status;
-        }
-
-        // Validar que tenemos al menos un criterio de búsqueda
-        if (Object.keys(where).length === 0) {
+        // Criterio de búsqueda
+        if (!clientId && !musicianId) {
             return NextResponse.json({
                 success: false,
-                message: "Debe proporcionar al menos un criterio de búsqueda (clientId, musicianId o status)"
+                message: "Debe proporcionar clientId o musicianId como parámetro"
             }, { status: 400 });
         }
 
-        // Obtener reservas
+        const where: Record<string, any> = {};
+        if (clientId) {
+            where.clientId = clientId;
+        }
+        if (musicianId) {
+            where['musicianId'] = musicianId;
+        }
+
         const reservations = await prisma.reservation.findMany({
             where,
-            orderBy: {
-                creationDate: 'desc'
-            },
             include: {
                 client: {
                     select: {
@@ -59,24 +92,20 @@ export async function GET(request: Request) {
                 musician: {
                     select: {
                         id: true,
-                        name: true,
-                        email: true,
-                        phone: true
-                    }
-                },
-                reservationstatus: {
-                    select: {
-                        id: true,
                         name: true
                     }
-                }
+                },
+                reservationstatus: true
+            },
+            orderBy: {
+                creationDate: 'desc'
             }
         });
 
         return NextResponse.json({
             success: true,
             data: reservations
-        }, { status: 200 });
+        });
 
     } catch (error) {
         console.error('Error al obtener reservas:', error);
@@ -89,24 +118,82 @@ export async function GET(request: Request) {
     }
 }
 
-// Endpoint para crear una nueva reserva
+// POST - Crear una nueva reserva (a partir de una prereservación)
 export async function POST(request: Request) {
     try {
         const body = await request.json();
 
-        // Validar datos de entrada
-        const reservationData = {
-            clientId: body.clientId,
-            musicianId: body.musicianId,
-            price: parseFloat(body.price) || 0,
-            serviceDate: new Date(body.serviceDate),
-            reservationStatusId: body.reservationStatusId || "pending" // Valor por defecto
-        };
+        // Validar datos
+        const result = createReservationSchema.safeParse(body);
 
-        // Crear reserva
-        const reservation = await prisma.reservation.create({
-            data: reservationData
+        if (!result.success) {
+            return NextResponse.json({
+                success: false,
+                errors: result.error.format()
+            }, { status: 400 });
+        }
+
+        const { clientId, musicianId, price, serviceDate, eventType } = result.data;
+
+        // Buscar status "pending"
+        const pendingStatus = await prisma.reservationstatus.findFirst({
+            where: { name: 'Pendiente' }
         });
+
+        if (!pendingStatus) {
+            return NextResponse.json({
+                success: false,
+                message: "No se pudo encontrar el estado 'Pendiente'"
+            }, { status: 500 });
+        }
+
+        // Crear la reserva con estado pendiente
+        const reservation = await prisma.reservation.create({
+            data: {
+                clientId,
+                musicianId,
+                price,
+                serviceDate: new Date(serviceDate),
+                reservationStatusId: pendingStatus.id
+            },
+            include: {
+                client: {
+                    select: {
+                        name: true
+                    }
+                },
+                musician: {
+                    select: {
+                        name: true
+                    }
+                },
+                reservationstatus: true
+            }
+        });
+
+        // Marcar los mensajes previos con el nuevo ID de reserva
+        if (reservation.id) {
+            await prisma.message.updateMany({
+                where: {
+                    clientId,
+                    musicianId,
+                    reservationId: null
+                },
+                data: {
+                    reservationId: reservation.id
+                }
+            });
+
+            // Crear mensaje de confirmación
+            await prisma.message.create({
+                data: {
+                    clientId,
+                    musicianId,
+                    content: `✅ *RESERVA CONFIRMADA*\n\nLa reserva ha sido creada correctamente.\nID: ${reservation.id}\nFecha: ${new Date(serviceDate).toLocaleDateString()}\nPrecio: COP $${price.toLocaleString()}\n${eventType ? `Tipo de evento: ${eventType}` : ''}`,
+                    reservationId: reservation.id
+                }
+            });
+        }
 
         return NextResponse.json({
             success: true,
@@ -125,36 +212,90 @@ export async function POST(request: Request) {
     }
 }
 
-// Endpoint para actualizar el estado de una reserva
+// PATCH - Actualizar estado de reserva
 export async function PATCH(request: Request) {
     try {
         const body = await request.json();
 
-        const { id, status } = body;
+        // Validar datos
+        const result = updateReservationSchema.safeParse(body);
 
-        if (!id || !status) {
+        if (!result.success) {
             return NextResponse.json({
                 success: false,
-                message: "Debe proporcionar un ID de reserva y un estado"
+                errors: result.error.format()
+            }, { status: 400 });
+        }
+
+        const { id, status } = result.data;
+
+        // Verificar que la reserva existe
+        const reservation = await prisma.reservation.findUnique({
+            where: { id }
+        });
+
+        if (!reservation) {
+            return NextResponse.json({
+                success: false,
+                message: "Reserva no encontrada"
+            }, { status: 404 });
+        }
+
+        // Verificar que el estado es válido
+        const validStatus = await prisma.reservationstatus.findFirst({
+            where: { id: status }
+        });
+
+        if (!validStatus) {
+            return NextResponse.json({
+                success: false,
+                message: "Estado no válido"
             }, { status: 400 });
         }
 
         // Actualizar estado
-        const reservation = await prisma.reservation.update({
+        const updatedReservation = await prisma.reservation.update({
             where: { id },
             data: {
                 reservationStatusId: status
+            },
+            include: {
+                reservationstatus: true
             }
         });
 
+        // Si se acepta la reserva, crear mensaje de notificación
+        if (status === "accepted") {
+            await prisma.message.create({
+                data: {
+                    clientId: reservation.clientId,
+                    musicianId: reservation.musicianId,
+                    content: `✅ *RESERVA ACEPTADA*\n\nEl músico ha aceptado tu reserva.\nPor favor, procede al pago para confirmar.`,
+                    reservationId: id
+                }
+            });
+        }
+
+        // Si se rechaza la reserva, crear mensaje de notificación
+        if (status === "rejected") {
+            await prisma.message.create({
+                data: {
+                    clientId: reservation.clientId,
+                    musicianId: reservation.musicianId,
+                    content: `❌ *RESERVA RECHAZADA*\n\nEl músico ha rechazado tu reserva.`,
+                    reservationId: id
+                }
+            });
+        }
+
         return NextResponse.json({
             success: true,
-            message: "Estado de reserva actualizado correctamente",
-            data: reservation
-        }, { status: 200 });
+            message: "Estado actualizado correctamente",
+            data: updatedReservation
+        });
 
     } catch (error) {
-        console.error('Error al actualizar reserva:', error);
+        console.error('Error al actualizar estado:', error);
         return NextResponse.json({
             success: false,
             message: "Error al procesar la solicitud"
