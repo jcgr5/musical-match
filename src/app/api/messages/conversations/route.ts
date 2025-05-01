@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
-interface Conversation {
-    clientId?: string;
-    musicianId?: string;
+interface ConversationData {
+    id: string;
+    clientId: string;
+    musicianId: string;
+    updatedAt: Date;
+    messages: unknown;
+    client: { name: string };
+    musician: { name: string };
+}
+
+interface MessageData {
+    id: string;
+    content: string;
+    senderId: string;
+    senderType: string;
+    timestamp: string;
 }
 
 export async function GET(request: Request) {
@@ -19,30 +32,60 @@ export async function GET(request: Request) {
             );
         }
 
-        // Buscar mensajes únicos agrupados por pares cliente-músico
-        let conversations: Conversation[] = [];
+        // Buscar conversaciones en la nueva tabla conversation
+        let conversations: ConversationData[] = [];
 
         if (clientId) {
-            // Buscar todas las conversaciones de un cliente usando findMany en lugar de raw query
-            const uniqueMusicians = await prisma.message.findMany({
+            // Buscar todas las conversaciones de un cliente
+            conversations = await prisma.conversation.findMany({
                 where: { clientId },
-                select: { musicianId: true },
-                distinct: ['musicianId']
+                include: {
+                    client: {
+                        select: { name: true }
+                    },
+                    musician: {
+                        select: { name: true }
+                    }
+                },
+                orderBy: {
+                    updatedAt: 'desc'
+                }
             });
-
-            conversations = uniqueMusicians.map(item => ({ musicianId: item.musicianId }));
         } else if (musicianId) {
-            // Buscar todas las conversaciones de un músico usando findMany en lugar de raw query
-            const uniqueClients = await prisma.message.findMany({
+            // Buscar todas las conversaciones de un músico
+            conversations = await prisma.conversation.findMany({
                 where: { musicianId },
-                select: { clientId: true },
-                distinct: ['clientId']
+                include: {
+                    client: {
+                        select: { name: true }
+                    },
+                    musician: {
+                        select: { name: true }
+                    }
+                },
+                orderBy: {
+                    updatedAt: 'desc'
+                }
             });
-
-            conversations = uniqueClients.map(item => ({ clientId: item.clientId }));
         }
 
-        return NextResponse.json({ success: true, data: conversations });
+        // Formatear la respuesta para incluir el último mensaje
+        const formattedConversations = conversations.map(conversation => {
+            const messages = conversation.messages as MessageData[];
+            const lastMessage = messages && messages.length > 0 ? messages[messages.length - 1] : null;
+
+            return {
+                id: conversation.id,
+                clientId: conversation.clientId,
+                musicianId: conversation.musicianId,
+                clientName: conversation.client.name,
+                musicianName: conversation.musician.name,
+                lastMessage: lastMessage ? lastMessage.content : "",
+                timestamp: lastMessage ? lastMessage.timestamp : conversation.updatedAt
+            };
+        });
+
+        return NextResponse.json({ success: true, data: formattedConversations });
     } catch (error) {
         console.error("Error al obtener conversaciones:", error);
         return NextResponse.json(

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
             }, { status: 400 });
         }
 
-        const where: Record<string, any> = {};
+        const where: Record<string, string> = {};
         if (clientId) {
             where.clientId = clientId;
         }
@@ -171,28 +172,52 @@ export async function POST(request: Request) {
             }
         });
 
-        // Marcar los mensajes previos con el nuevo ID de reserva
+        // Enviar mensaje de confirmación a la conversación
         if (reservation.id) {
-            await prisma.message.updateMany({
+            // Buscar la conversación existente
+            const conversation = await prisma.conversation.findFirst({
                 where: {
                     clientId,
-                    musicianId,
-                    reservationId: null
-                },
-                data: {
-                    reservationId: reservation.id
+                    musicianId
                 }
             });
 
-            // Crear mensaje de confirmación
-            await prisma.message.create({
-                data: {
-                    clientId,
-                    musicianId,
-                    content: `✅ *RESERVA CONFIRMADA*\n\nLa reserva ha sido creada correctamente.\nID: ${reservation.id}\nFecha: ${new Date(serviceDate).toLocaleDateString()}\nPrecio: COP $${price.toLocaleString()}\n${eventType ? `Tipo de evento: ${eventType}` : ''}`,
-                    reservationId: reservation.id
-                }
-            });
+            const messageId = crypto.randomUUID();
+            const newMessage = {
+                id: messageId,
+                clientId,
+                musicianId,
+                content: `✅ *RESERVA CONFIRMADA*\n\nLa reserva ha sido creada correctamente.\nID: ${reservation.id}\nFecha: ${new Date(serviceDate).toLocaleDateString()}\nPrecio: COP $${price.toLocaleString()}\n${eventType ? `Tipo de evento: ${eventType}` : ''}`,
+                timestamp: new Date(),
+                senderId: "SYSTEM",
+                senderType: "SYSTEM",
+                reservationId: reservation.id
+            };
+
+            if (conversation) {
+                // Actualizar conversación existente
+                const existingMessages = JSON.parse(JSON.stringify(conversation.messages || []));
+                existingMessages.push(newMessage);
+
+                await prisma.conversation.update({
+                    where: {
+                        id: conversation.id
+                    },
+                    data: {
+                        messages: JSON.parse(JSON.stringify(existingMessages)),
+                        updatedAt: new Date()
+                    }
+                });
+            } else {
+                // Crear nueva conversación con el mensaje
+                await prisma.conversation.create({
+                    data: {
+                        clientId,
+                        musicianId,
+                        messages: JSON.parse(JSON.stringify([newMessage]))
+                    }
+                });
+            }
         }
 
         return NextResponse.json({
@@ -253,39 +278,87 @@ export async function PATCH(request: Request) {
             }, { status: 400 });
         }
 
-        // Actualizar estado
+        // Actualizar estado de la reserva
         const updatedReservation = await prisma.reservation.update({
             where: { id },
             data: {
                 reservationStatusId: status
             },
             include: {
+                client: {
+                    select: {
+                        name: true,
+                        id: true
+                    }
+                },
+                musician: {
+                    select: {
+                        name: true,
+                        id: true
+                    }
+                },
                 reservationstatus: true
             }
         });
 
-        // Si se acepta la reserva, crear mensaje de notificación
-        if (status === "accepted") {
-            await prisma.message.create({
-                data: {
-                    clientId: reservation.clientId,
-                    musicianId: reservation.musicianId,
-                    content: `✅ *RESERVA ACEPTADA*\n\nEl músico ha aceptado tu reserva.\nPor favor, procede al pago para confirmar.`,
-                    reservationId: id
-                }
-            });
+        // Notificar el cambio de estado a través de un mensaje en la conversación
+        const clientId = updatedReservation.clientId;
+        const musicianId = updatedReservation.musicianId;
+
+        let messageContent = "";
+        if (validStatus.name === "Aceptada") {
+            messageContent = `✅ *RESERVA ACEPTADA*\n\nEl músico ha aceptado tu reserva.\nID: ${id}\nFecha: ${updatedReservation.serviceDate.toLocaleDateString()}\nPrecio: COP $${updatedReservation.price.toString()}`;
+        } else if (validStatus.name === "Rechazada") {
+            messageContent = `❌ *RESERVA RECHAZADA*\n\nEl músico ha rechazado tu reserva.\nID: ${id}`;
+        } else if (validStatus.name === "Completada") {
+            messageContent = `🎉 *RESERVA COMPLETADA*\n\nLa reserva ha sido marcada como completada.\nID: ${id}`;
         }
 
-        // Si se rechaza la reserva, crear mensaje de notificación
-        if (status === "rejected") {
-            await prisma.message.create({
-                data: {
-                    clientId: reservation.clientId,
-                    musicianId: reservation.musicianId,
-                    content: `❌ *RESERVA RECHAZADA*\n\nEl músico ha rechazado tu reserva.`,
-                    reservationId: id
+        if (messageContent) {
+            // Buscar conversación existente
+            const conversation = await prisma.conversation.findFirst({
+                where: {
+                    clientId,
+                    musicianId
                 }
             });
+
+            const messageId = crypto.randomUUID();
+            const newMessage = {
+                id: messageId,
+                clientId,
+                musicianId,
+                content: messageContent,
+                timestamp: new Date(),
+                senderId: "SYSTEM",
+                senderType: "SYSTEM",
+                reservationId: id
+            };
+
+            if (conversation) {
+                // Actualizar conversación existente
+                const existingMessages = JSON.parse(JSON.stringify(conversation.messages || []));
+                existingMessages.push(newMessage);
+
+                await prisma.conversation.update({
+                    where: {
+                        id: conversation.id
+                    },
+                    data: {
+                        messages: JSON.parse(JSON.stringify(existingMessages)),
+                        updatedAt: new Date()
+                    }
+                });
+            } else {
+                // Crear nueva conversación con el mensaje
+                await prisma.conversation.create({
+                    data: {
+                        clientId,
+                        musicianId,
+                        messages: JSON.parse(JSON.stringify([newMessage]))
+                    }
+                });
+            }
         }
 
         return NextResponse.json({

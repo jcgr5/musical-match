@@ -30,18 +30,17 @@ interface ChatProps {
 // Interfaz para los mensajes recibidos de la API
 interface ApiMessage {
     id: string;
-    clientId: string;
-    musicianId: string;
     content: string;
-    timestamp: string;
     senderId: string;
     senderType: string;
-    client: {
-        name: string;
-    };
-    musician: {
-        name: string;
-    };
+    timestamp: string;
+}
+
+// Interfaz para la respuesta de la API de conversaciones
+interface ConversationResponse {
+    messages: ApiMessage[];
+    clientName: string;
+    musicianName: string;
 }
 
 export function Chat({
@@ -96,12 +95,12 @@ export function Chat({
 
                 // Primero verificar si ya hay mensajes
                 try {
-                    const checkResponse = await fetch(`/api/messages?clientId=${clientId}&musicianId=${musicianId}`);
+                    const checkResponse = await fetch(`/api/conversations?clientId=${clientId}&musicianId=${musicianId}`);
                     if (checkResponse.ok) {
                         const checkData = await checkResponse.json();
 
                         // Si ya hay mensajes, no crear uno nuevo
-                        if (checkData.success && Array.isArray(checkData.data) && checkData.data.length > 0) {
+                        if (checkData.success && checkData.data.messages && checkData.data.messages.length > 0) {
                             console.log("Ya existen mensajes, no se creará uno inicial");
                             loadMessagesByUsers();
                             setInitialMessageSent(true);
@@ -156,23 +155,31 @@ export function Chat({
 
         setIsLoading(true);
         try {
-            const response = await fetch(`/api/messages?clientId=${clientId}&musicianId=${musicianId}`);
+            const response = await fetch(`/api/conversations?clientId=${clientId}&musicianId=${musicianId}`);
             if (!response.ok) {
                 throw new Error('Error obteniendo mensajes');
             }
 
             const data = await response.json();
 
-            if (data.success && Array.isArray(data.data)) {
-                const formattedMessages = data.data.map((msg: ApiMessage) => ({
-                    id: msg.id,
-                    senderId: msg.senderId,
-                    receiverId: msg.senderId === msg.clientId ? msg.musicianId : msg.clientId,
-                    content: msg.content,
-                    timestamp: new Date(msg.timestamp),
-                    senderName: msg.senderId === msg.clientId ? msg.client.name : msg.musician.name,
-                    senderType: msg.senderType.toLowerCase() === "client" ? "client" : "musician"
-                }));
+            if (data.success && data.data) {
+                const conversationData = data.data as ConversationResponse;
+                const apiMessages = conversationData.messages || [];
+
+                const formattedMessages = apiMessages.map((msg: ApiMessage) => {
+                    // Asegurarse que senderType sea siempre "client" o "musician"
+                    const senderTypeFormatted = msg.senderType.toLowerCase() === "client" ? "client" : "musician";
+
+                    return {
+                        id: msg.id,
+                        senderId: msg.senderId,
+                        receiverId: msg.senderId === clientId ? musicianId : clientId,
+                        content: msg.content,
+                        timestamp: new Date(msg.timestamp),
+                        senderName: msg.senderId === clientId ? conversationData.clientName : conversationData.musicianName,
+                        senderType: senderTypeFormatted as "client" | "musician"
+                    };
+                });
 
                 if (formattedMessages.length > 0) {
                     setMessages(formattedMessages);
@@ -198,7 +205,7 @@ export function Chat({
         const refreshMessages = async () => {
             try {
                 if (clientId && musicianId) {
-                    const url = `/api/messages?clientId=${clientId}&musicianId=${musicianId}`;
+                    const url = `/api/conversations?clientId=${clientId}&musicianId=${musicianId}`;
 
                     const response = await fetch(url);
                     if (!response.ok) {
@@ -207,16 +214,24 @@ export function Chat({
 
                     const data = await response.json();
 
-                    if (data.success && Array.isArray(data.data)) {
-                        const formattedMessages = data.data.map((msg: ApiMessage) => ({
-                            id: msg.id,
-                            senderId: msg.senderId,
-                            receiverId: msg.senderId === msg.clientId ? msg.musicianId : msg.clientId,
-                            content: msg.content,
-                            timestamp: new Date(msg.timestamp),
-                            senderName: msg.senderId === msg.clientId ? msg.client.name : msg.musician.name,
-                            senderType: msg.senderType.toLowerCase() === "client" ? "client" : "musician"
-                        }));
+                    if (data.success && data.data) {
+                        const conversationData = data.data as ConversationResponse;
+                        const apiMessages = conversationData.messages || [];
+
+                        const formattedMessages = apiMessages.map((msg: ApiMessage) => {
+                            // Asegurarse que senderType sea siempre "client" o "musician"
+                            const senderTypeFormatted = msg.senderType.toLowerCase() === "client" ? "client" : "musician";
+
+                            return {
+                                id: msg.id,
+                                senderId: msg.senderId,
+                                receiverId: msg.senderId === clientId ? musicianId : clientId,
+                                content: msg.content,
+                                timestamp: new Date(msg.timestamp),
+                                senderName: msg.senderId === clientId ? conversationData.clientName : conversationData.musicianName,
+                                senderType: senderTypeFormatted as "client" | "musician"
+                            };
+                        });
 
                         // Solo actualizar si hay nuevos mensajes
                         if (formattedMessages.length !== messages.length) {
@@ -249,9 +264,9 @@ export function Chat({
                 senderType: userRole
             };
 
-            console.log("Enviando mensaje:", payload);
+            console.log('Enviando mensaje a la API:', payload);
 
-            const response = await fetch('/api/messages', {
+            const response = await fetch('/api/conversations', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -259,17 +274,16 @@ export function Chat({
                 body: JSON.stringify(payload),
             });
 
-            // Si hay un error, intentar obtener los detalles
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ message: "Error desconocido" }));
-                console.error("Error en respuesta del servidor:", errorData);
+                console.error('Error al enviar mensaje:', errorData);
                 throw new Error(errorData.message || 'Error al enviar mensaje');
             }
 
-            const data = await response.json();
-            return data.success;
+            const result = await response.json();
+            return result.success;
         } catch (error) {
-            console.error('Error al enviar mensaje a la API:', error);
+            console.error('Error en sendMessageToApi:', error);
             return false;
         }
     };

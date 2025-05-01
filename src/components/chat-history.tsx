@@ -125,7 +125,7 @@ export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
     // Cargar conversaciones solo en modo chats
     useEffect(() => {
         const fetchConversations = async () => {
-            if (!userId || !userRole || !showOnlyChats) return;
+            if (!userId || !userRole) return;
 
             setLoading(true);
             setLoadingError(null);
@@ -142,35 +142,10 @@ export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
                 const data = await response.json();
 
                 if (data.success && Array.isArray(data.data)) {
-                    // Cargar detalles para cada conversación
-                    const conversationsData: Conversation[] = [];
-
-                    for (const convo of data.data) {
-                        const otherId = userRole === "CLIENT" ? convo.musicianId : convo.clientId;
-
-                        // Obtener el último mensaje de la conversación
-                        const messagesResponse = await fetch(`/api/messages?${userRole === "CLIENT" ? "clientId" : "musicianId"}=${userId}&${userRole === "CLIENT" ? "musicianId" : "clientId"}=${otherId}&limit=1`);
-
-                        if (messagesResponse.ok) {
-                            const messagesData = await messagesResponse.json();
-
-                            if (messagesData.success && Array.isArray(messagesData.data) && messagesData.data.length > 0) {
-                                const lastMsg = messagesData.data[0];
-
-                                conversationsData.push({
-                                    id: `${userRole === "CLIENT" ? userId : otherId}-${userRole === "CLIENT" ? otherId : userId}`,
-                                    clientId: userRole === "CLIENT" ? userId : otherId,
-                                    musicianId: userRole === "CLIENT" ? otherId : userId,
-                                    clientName: userRole === "CLIENT" ? lastMsg.client.name : lastMsg.client.name,
-                                    musicianName: userRole === "CLIENT" ? lastMsg.musician.name : lastMsg.musician.name,
-                                    lastMessage: lastMsg.content,
-                                    timestamp: lastMsg.timestamp
-                                });
-                            }
-                        }
-                    }
-
-                    setConversations(conversationsData);
+                    // Las conversaciones ya vienen con toda la información necesaria
+                    setConversations(data.data);
+                } else {
+                    throw new Error('Formato de respuesta inesperado');
                 }
             } catch (error) {
                 console.error('Error al cargar conversaciones:', error);
@@ -181,7 +156,7 @@ export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
         };
 
         fetchConversations();
-    }, [userId, userRole, showOnlyChats]);
+    }, [userId, userRole]);
 
     const handleReservationSelect = (reservation: Reservation) => {
         setSelectedReservation(reservation);
@@ -330,15 +305,45 @@ export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
         try {
             setProcessing(true);
 
-            // En una implementación real, deberíamos tener acceso a estos datos
-            // a través de una API o del contexto de la aplicación
-            // Por ahora usamos valores razonables por defecto
-            const price = 200000;
-            const serviceDate = new Date();
-            serviceDate.setDate(serviceDate.getDate() + 7); // Una semana desde hoy
-            const eventType = 'Evento';
+            // Obtener la conversación para extraer los datos de la reserva del primer mensaje
+            const response = await fetch(`/api/conversations?clientId=${clientId}&musicianId=${musicianId}`);
+            if (!response.ok) {
+                throw new Error('Error al obtener la conversación');
+            }
 
-            console.log("Creando reserva con datos:", {
+            const data = await response.json();
+
+            if (!data.success || !data.data || !data.data.messages || data.data.messages.length === 0) {
+                throw new Error('No se encontraron mensajes en la conversación');
+            }
+
+            // Obtener el primer mensaje (mensaje de solicitud de reserva)
+            const firstMessage = data.data.messages[0];
+
+            // Extraer datos del mensaje
+            const messageContent = firstMessage.content;
+
+            // Precio de la reserva
+            const priceMatch = messageContent.match(/Precio inicial: COP \$([0-9,]+)/);
+            const priceString = priceMatch ? priceMatch[1].replace(/,/g, '') : "200000";
+            const price = parseInt(priceString, 10);
+
+            // Fecha del evento
+            const dateMatch = messageContent.match(/Fecha: (\d{2}\/\d{2}\/\d{4})/);
+            let serviceDate = new Date();
+            if (dateMatch) {
+                const dateParts = dateMatch[1].split('/');
+                serviceDate = new Date(`${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`);
+            } else {
+                // Si no se puede extraer, usar fecha a una semana de hoy
+                serviceDate.setDate(serviceDate.getDate() + 7);
+            }
+
+            // Tipo de evento
+            const eventTypeMatch = messageContent.match(/Tipo de evento: ([^\n]+)/);
+            const eventType = eventTypeMatch ? eventTypeMatch[1].trim() : 'Evento';
+
+            console.log("Creando reserva con datos extraídos:", {
                 clientId,
                 musicianId,
                 price,
@@ -346,7 +351,7 @@ export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
                 eventType
             });
 
-            const response = await fetch('/api/reservations', {
+            const createResponse = await fetch('/api/reservations', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -360,19 +365,19 @@ export function ChatHistory({ showOnlyChats }: ChatHistoryProps) {
                 }),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
+            if (!createResponse.ok) {
+                const errorData = await createResponse.json();
                 console.error("Error al crear reserva:", errorData);
                 throw new Error(errorData.message || 'Error al crear la reserva');
             }
 
-            const data = await response.json();
+            const createData = await createResponse.json();
 
-            if (data.success) {
+            if (createData.success) {
                 // Recargar las reservaciones
                 window.location.reload();
             } else {
-                throw new Error(data.message || 'Error al crear la reserva');
+                throw new Error(createData.message || 'Error al crear la reserva');
             }
         } catch (error) {
             console.error('Error al crear reserva:', error);

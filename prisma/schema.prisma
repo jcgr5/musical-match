@@ -35,7 +35,7 @@ model client {
   address              String?                @db.VarChar(255)
   city                 city?                  @relation(fields: [cityId], references: [id], map: "Client_cityId_fkey")
   completedreservation completedreservation[]
-  message              message[]
+  conversation         conversation[]
   reservation          reservation[]
   review               review[]
 
@@ -74,20 +74,19 @@ model media {
   @@index([musicianId], map: "Media_musicianId_fkey")
 }
 
-model message {
-  id            String       @id @default(cuid())
-  clientId      String
-  musicianId    String
-  content       String       @db.Text
-  timestamp     DateTime     @default(now())
-  senderId      String       // Identificador de quién envió el mensaje (clientId o musicianId)
-  senderType    String       @default("CLIENT")
-  client        client       @relation(fields: [clientId], references: [id], map: "Message_clientId_fkey")
-  musician      musician     @relation(fields: [musicianId], references: [id], map: "Message_musicianId_fkey")
+model conversation {
+  id         String   @id @default(cuid())
+  clientId   String
+  musicianId String
+  messages   Json    // Almacenará un array de mensajes
+  updatedAt  DateTime @default(now()) @updatedAt
+  createdAt  DateTime @default(now())
+  client     client   @relation(fields: [clientId], references: [id], map: "Conversation_clientId_fkey")
+  musician   musician @relation(fields: [musicianId], references: [id], map: "Conversation_musicianId_fkey")
 
-  @@index([clientId], map: "Message_clientId_fkey")
-  @@index([musicianId], map: "Message_musicianId_fkey")
-  @@index([senderId])
+  @@unique([clientId, musicianId], map: "Conversation_clientId_musicianId_key")
+  @@index([clientId], map: "Conversation_clientId_fkey")
+  @@index([musicianId], map: "Conversation_musicianId_fkey")
 }
 
 model musicalgenre {
@@ -110,7 +109,7 @@ model musician {
   city                 city?                  @relation(fields: [cityId], references: [id], map: "Musician_cityId_fkey")
   completedreservation completedreservation[]
   media                media[]
-  message              message[]
+  conversation         conversation[]
   musiciangenre        musiciangenre[]
   musicianinstrument   musicianinstrument[]
   musicianevent        musicianevent[]

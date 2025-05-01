@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
-// Esquema para validar los mensajes enviados
+// Esquema para validar el mensaje enviado
 const messageSchema = z.object({
     clientId: z.string(),
     musicianId: z.string(),
@@ -14,22 +13,91 @@ const messageSchema = z.object({
     senderType: z.enum(["CLIENT", "MUSICIAN"]).default("CLIENT")
 });
 
-// Interfaces para el manejo de mensajes dentro de conversations
+// Estructura de mensaje en la conversación
 interface MessageData {
     id: string;
-    clientId: string;
-    musicianId: string;
     content: string;
-    timestamp: Date;
     senderId: string;
     senderType: string;
+    timestamp: string;
 }
 
-// Guardar un nuevo mensaje
+// GET: Obtener una conversación entre cliente y músico
+export async function GET(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const clientId = searchParams.get("clientId");
+        const musicianId = searchParams.get("musicianId");
+
+        if (!clientId || !musicianId) {
+            return NextResponse.json(
+                { success: false, message: "Se requieren clientId y musicianId" },
+                { status: 400 }
+            );
+        }
+
+        // Buscar la conversación existente
+        const conversation = await prisma.conversation.findFirst({
+            where: {
+                AND: [
+                    { clientId },
+                    { musicianId }
+                ]
+            },
+            include: {
+                client: {
+                    select: {
+                        name: true,
+                    }
+                },
+                musician: {
+                    select: {
+                        name: true,
+                    }
+                }
+            }
+        });
+
+        if (!conversation) {
+            return NextResponse.json({
+                success: true,
+                data: {
+                    messages: [],
+                    clientName: null,
+                    musicianName: null
+                }
+            });
+        }
+
+        // Parsear los mensajes almacenados como JSON
+        const messages = conversation.messages as unknown as MessageData[];
+
+        return NextResponse.json({
+            success: true,
+            data: {
+                messages,
+                clientName: conversation.client.name,
+                musicianName: conversation.musician.name
+            }
+        });
+    } catch (error) {
+        console.error("Error al obtener conversación:", error);
+        return NextResponse.json(
+            { success: false, message: "Error al obtener la conversación", error: String(error) },
+            { status: 500 }
+        );
+    } finally {
+        await prisma.$disconnect().catch(e => {
+            console.error("Error al desconectar de Prisma:", e);
+        });
+    }
+}
+
+// POST: Agregar un mensaje a una conversación existente o crear una nueva
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        console.log("Recibido en /api/messages:", body);
+        console.log("Recibido en /api/conversations:", body);
 
         // Validar datos
         const result = messageSchema.safeParse(body);
@@ -42,7 +110,7 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        const { clientId, musicianId, content, senderId, senderType } = result.data;
+        const { clientId, musicianId, content, senderId } = result.data;
 
         // Verificar que senderId sea igual a clientId o musicianId
         if (senderId !== clientId && senderId !== musicianId) {
@@ -53,11 +121,8 @@ export async function POST(request: Request) {
             }, { status: 400 });
         }
 
-        // Validar que senderType coincida con senderId
+        // Determinar el tipo de remitente basado en el ID
         const derivedSenderType = senderId === clientId ? "CLIENT" : "MUSICIAN";
-        if (senderType !== derivedSenderType) {
-            console.error(`Error de validación: senderType (${senderType}) no coincide con el tipo de remitente (${derivedSenderType})`);
-        }
 
         // Verificar que los IDs de cliente y músico existen
         try {
@@ -87,28 +152,33 @@ export async function POST(request: Request) {
                 }, { status: 404 });
             }
 
-            // Buscar o crear conversación
+            // Buscar una conversación existente o crear una nueva
+            // Generar un ID único para el mensaje
+            const messageId = crypto.randomUUID();
+
+            // Crear objeto de mensaje
+            const newMessage: MessageData = {
+                id: messageId,
+                content,
+                senderId,
+                senderType: derivedSenderType,
+                timestamp: new Date().toISOString()
+            };
+
+            console.log("Buscando conversación existente...");
             const conversation = await prisma.conversation.findFirst({
                 where: {
-                    clientId,
-                    musicianId
+                    AND: [
+                        { clientId },
+                        { musicianId }
+                    ]
                 }
             });
 
-            const messageId = crypto.randomUUID();
-            const newMessage: MessageData = {
-                id: messageId,
-                clientId,
-                musicianId,
-                content,
-                timestamp: new Date(),
-                senderId,
-                senderType: derivedSenderType
-            };
-
             if (conversation) {
+                console.log("Conversación encontrada, actualizando...");
                 // Actualizar conversación existente
-                const existingMessages = JSON.parse(JSON.stringify(conversation.messages || [])) as MessageData[];
+                const existingMessages: MessageData[] = JSON.parse(JSON.stringify(conversation.messages || []));
                 existingMessages.push(newMessage);
 
                 const updatedConversation = await prisma.conversation.update({
@@ -121,62 +191,41 @@ export async function POST(request: Request) {
                     }
                 });
 
-                console.log("Mensaje agregado a conversación existente:", updatedConversation.id);
-
+                console.log("Conversación actualizada:", updatedConversation.id);
                 return NextResponse.json({
                     success: true,
-                    message: "Mensaje enviado correctamente",
-                    data: {
-                        ...newMessage,
-                        clientName: client.name,
-                        musicianName: musician.name
-                    }
-                }, { status: 201 });
+                    message: "Mensaje agregado a la conversación",
+                    data: newMessage
+                }, { status: 200 });
             } else {
+                console.log("Conversación no encontrada, creando nueva...");
                 // Crear nueva conversación
                 const newConversation = await prisma.conversation.create({
                     data: {
                         clientId,
                         musicianId,
-                        messages: JSON.parse(JSON.stringify([newMessage])),
-                    },
-                    include: {
-                        client: {
-                            select: {
-                                name: true
-                            }
-                        },
-                        musician: {
-                            select: {
-                                name: true
-                            }
-                        }
+                        messages: JSON.parse(JSON.stringify([newMessage]))
                     }
                 });
 
                 console.log("Nueva conversación creada:", newConversation.id);
-
                 return NextResponse.json({
                     success: true,
-                    message: "Mensaje enviado correctamente",
-                    data: {
-                        ...newMessage,
-                        clientName: client.name,
-                        musicianName: musician.name
-                    }
+                    message: "Nueva conversación creada",
+                    data: newMessage
                 }, { status: 201 });
             }
+
         } catch (error) {
-            console.error("Error al procesar el mensaje:", error);
+            console.error("Error al guardar mensaje en la conversación:", error);
             return NextResponse.json({
                 success: false,
                 message: "Error al guardar el mensaje",
                 error: String(error)
             }, { status: 500 });
         }
-
     } catch (error) {
-        console.error('Error general en api/messages:', error);
+        console.error('Error general en api/conversations:', error);
         return NextResponse.json({
             success: false,
             message: "Error al procesar la solicitud",
@@ -186,60 +235,5 @@ export async function POST(request: Request) {
         await prisma.$disconnect().catch(e => {
             console.error("Error al desconectar de Prisma:", e);
         });
-    }
-}
-
-// Obtener mensajes
-export async function GET(request: Request) {
-    try {
-        const { searchParams } = new URL(request.url);
-        const clientId = searchParams.get("clientId");
-        const musicianId = searchParams.get("musicianId");
-
-        if (!clientId || !musicianId) {
-            return NextResponse.json(
-                { success: false, message: "Se requieren clientId y musicianId" },
-                { status: 400 }
-            );
-        }
-
-        // Obtener conversación entre cliente y músico
-        const conversation = await prisma.conversation.findFirst({
-            where: {
-                clientId,
-                musicianId
-            },
-            include: {
-                client: {
-                    select: {
-                        name: true,
-                    }
-                },
-                musician: {
-                    select: {
-                        name: true,
-                    }
-                }
-            }
-        });
-
-        if (!conversation) {
-            return NextResponse.json({ success: true, data: [] });
-        }
-
-        const messages = (conversation.messages as unknown) as MessageData[];
-        const formattedMessages = messages.map(message => ({
-            ...message,
-            clientName: conversation.client.name,
-            musicianName: conversation.musician.name
-        }));
-
-        return NextResponse.json({ success: true, data: formattedMessages });
-    } catch (error) {
-        console.error("Error al obtener mensajes:", error);
-        return NextResponse.json(
-            { success: false, message: "Error al obtener los mensajes" },
-            { status: 500 }
-        );
     }
 } 
